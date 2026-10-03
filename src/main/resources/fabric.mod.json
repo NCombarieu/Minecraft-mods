@@ -1,0 +1,27 @@
+{
+	"schemaVersion": 1,
+	"id": "premiermod",
+	"version": "${version}",
+	"name": "Premier Mod",
+	"description": "Premier mod Fabric : message de bienvenue et commande /heal.",
+	"authors": [
+		"NCombarieu"
+	],
+	"contact": {
+		"sources": "https://github.com/NCombarieu/Minecraft-mods"
+	},
+	"license": "CC0-1.0",
+	"icon": "assets/premiermod/icon.png",
+	"environment": "*",
+	"entrypoints": {
+		"main": [
+			"com.ncombarieu.premiermod.PremierMod"
+		]
+	},
+	"depends": {
+		"fabricloader": ">=0.19.5",
+		"minecraft": "~26.3",
+		"java": ">=25",
+		"fabric-api": "*"
+	}
+}
