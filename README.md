@@ -1,3 +1,14 @@
+# Mods Minecraft
+
+Deux mods Fabric pour **Minecraft 26.3**, côté serveur uniquement :
+
+| Mod | Dossier | En bref |
+|---|---|---|
+| **Premier Mod** | racine du dépôt | Bienvenue, `/heal`, `/fusee`, `/de`, terre chanceuse, mouton arc-en-ciel |
+| **⌛ Chronomancie** | [`chronomancie/`](chronomancie/README.md) | Failles temporelles, vestiges d'autres époques et artefacts pour remonter, figer, dédoubler ou réparer le temps |
+
+`./gradlew build` compile les deux (et lance les tests en jeu de Chronomancie).
+
 # Premier Mod
 
 Mod Fabric pour **Minecraft 26.3**, côté serveur uniquement (les joueurs n'ont rien à installer).

@@ -1,0 +1,15 @@
+{
+	"schemaVersion": 1,
+	"id": "chronomancie-test",
+	"version": "1.0.0",
+	"name": "Chronomancie (tests)",
+	"environment": "*",
+	"entrypoints": {
+		"fabric-gametest": [
+			"com.ncombarieu.chronomancie.test.ChronomancieTests"
+		]
+	},
+	"depends": {
+		"chronomancie": "*"
+	}
+}

@@ -1,0 +1,72 @@
+{
+  "type": "minecraft:crafting_shaped",
+  "category": "equipment",
+  "key": {
+    "F": {
+      "fabric:type": "fabric:custom_data",
+      "base": "minecraft:amethyst_shard",
+      "nbt": {
+        "chronomancie": "fragment"
+      }
+    },
+    "G": "minecraft:gold_ingot",
+    "C": "minecraft:clock"
+  },
+  "pattern": [
+    " F ",
+    "GCG",
+    " F "
+  ],
+  "result": {
+    "id": "minecraft:clock",
+    "count": 1,
+    "components": {
+      "minecraft:custom_data": {
+        "chronomancie": "sablier"
+      },
+      "minecraft:item_name": {
+        "text": "Sablier du Retour",
+        "color": "gold"
+      },
+      "minecraft:item_model": "minecraft:clock",
+      "minecraft:enchantment_glint_override": true,
+      "minecraft:rarity": "epic",
+      "minecraft:max_stack_size": 1,
+      "minecraft:max_damage": 24,
+      "minecraft:use_cooldown": {
+        "seconds": 20.0,
+        "cooldown_group": "chronomancie:retour"
+      },
+      "minecraft:lore": [
+        {
+          "text": "Clic droit : remonte ton propre fil",
+          "color": "gray",
+          "italic": false
+        },
+        {
+          "text": "du temps de quelques secondes.",
+          "color": "gray",
+          "italic": false
+        },
+        {
+          "text": "Tu retrouves ta position et ta santé d'alors.",
+          "color": "gray",
+          "italic": false
+        },
+        {
+          "text": ""
+        },
+        {
+          "text": "Accroupi + fragment en main gauche : recharger",
+          "color": "dark_purple",
+          "italic": true
+        },
+        {
+          "text": "✦ Chronomancie",
+          "color": "dark_aqua",
+          "italic": false
+        }
+      ]
+    }
+  }
+}

@@ -1,0 +1,31 @@
+{
+  "display": {
+    "icon": {
+      "id": "minecraft:clock",
+      "components": {
+        "minecraft:enchantment_glint_override": true
+      }
+    },
+    "title": {
+      "text": "Chronomancie"
+    },
+    "description": {
+      "text": "Le temps de ce monde est fêlé…"
+    },
+    "frame": "task",
+    "show_toast": false,
+    "announce_to_chat": false,
+    "hidden": false,
+    "background": "minecraft:block/purpur_block"
+  },
+  "criteria": {
+    "accorde": {
+      "trigger": "minecraft:tick"
+    }
+  },
+  "requirements": [
+    [
+      "accorde"
+    ]
+  ]
+}

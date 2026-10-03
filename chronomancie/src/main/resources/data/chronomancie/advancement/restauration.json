@@ -1,0 +1,31 @@
+{
+  "display": {
+    "icon": {
+      "id": "minecraft:spyglass",
+      "components": {
+        "minecraft:enchantment_glint_override": true
+      }
+    },
+    "title": {
+      "text": "Comme si de rien n'était"
+    },
+    "description": {
+      "text": "Restaurer 100 blocs d'un coup avec le Chronoscope"
+    },
+    "frame": "goal",
+    "show_toast": true,
+    "announce_to_chat": true,
+    "hidden": false
+  },
+  "criteria": {
+    "accorde": {
+      "trigger": "minecraft:impossible"
+    }
+  },
+  "requirements": [
+    [
+      "accorde"
+    ]
+  ],
+  "parent": "chronomancie:faille_refermee"
+}

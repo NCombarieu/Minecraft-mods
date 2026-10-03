@@ -1,0 +1,30 @@
+{
+	"schemaVersion": 1,
+	"id": "chronomancie",
+	"version": "${version}",
+	"name": "Chronomancie",
+	"description": "Des failles temporelles s'ouvrent dans le monde. Refermez-les, récoltez leurs fragments et forgez des artefacts pour remonter le temps, le figer, le dédoubler… ou réparer le passé.",
+	"authors": [
+		"NCombarieu"
+	],
+	"contact": {
+		"sources": "https://github.com/NCombarieu/Minecraft-mods"
+	},
+	"license": "CC0-1.0",
+	"icon": "assets/chronomancie/icon.png",
+	"environment": "*",
+	"entrypoints": {
+		"main": [
+			"com.ncombarieu.chronomancie.Chronomancie"
+		]
+	},
+	"mixins": [
+		"chronomancie.mixins.json"
+	],
+	"depends": {
+		"fabricloader": ">=0.19.5",
+		"minecraft": "~26.3",
+		"java": ">=25",
+		"fabric-api": "*"
+	}
+}

@@ -1,0 +1,72 @@
+{
+  "type": "minecraft:crafting_shaped",
+  "category": "equipment",
+  "key": {
+    "F": {
+      "fabric:type": "fabric:custom_data",
+      "base": "minecraft:amethyst_shard",
+      "nbt": {
+        "chronomancie": "fragment"
+      }
+    },
+    "V": "minecraft:glass_pane",
+    "P": "minecraft:ender_pearl"
+  },
+  "pattern": [
+    "VFV",
+    "FPF",
+    "VFV"
+  ],
+  "result": {
+    "id": "minecraft:clock",
+    "count": 1,
+    "components": {
+      "minecraft:custom_data": {
+        "chronomancie": "miroir"
+      },
+      "minecraft:item_name": {
+        "text": "Miroir d'Écho",
+        "color": "aqua"
+      },
+      "minecraft:item_model": "minecraft:echo_shard",
+      "minecraft:enchantment_glint_override": true,
+      "minecraft:rarity": "epic",
+      "minecraft:max_stack_size": 1,
+      "minecraft:max_damage": 16,
+      "minecraft:use_cooldown": {
+        "seconds": 30.0,
+        "cooldown_group": "chronomancie:echo"
+      },
+      "minecraft:lore": [
+        {
+          "text": "Clic droit : ton Écho surgit du passé",
+          "color": "gray",
+          "italic": false
+        },
+        {
+          "text": "et rejoue tes derniers pas.",
+          "color": "gray",
+          "italic": false
+        },
+        {
+          "text": "Les monstres s'acharnent sur lui.",
+          "color": "gray",
+          "italic": false
+        },
+        {
+          "text": ""
+        },
+        {
+          "text": "Accroupi + fragment en main gauche : recharger",
+          "color": "dark_purple",
+          "italic": true
+        },
+        {
+          "text": "✦ Chronomancie",
+          "color": "dark_aqua",
+          "italic": false
+        }
+      ]
+    }
+  }
+}

@@ -1,0 +1,72 @@
+{
+  "type": "minecraft:crafting_shaped",
+  "category": "equipment",
+  "key": {
+    "F": {
+      "fabric:type": "fabric:custom_data",
+      "base": "minecraft:amethyst_shard",
+      "nbt": {
+        "chronomancie": "fragment"
+      }
+    },
+    "G": "minecraft:packed_ice",
+    "C": "minecraft:clock"
+  },
+  "pattern": [
+    "FGF",
+    "GCG",
+    "FGF"
+  ],
+  "result": {
+    "id": "minecraft:clock",
+    "count": 1,
+    "components": {
+      "minecraft:custom_data": {
+        "chronomancie": "stase"
+      },
+      "minecraft:item_name": {
+        "text": "Montre de Stase",
+        "color": "blue"
+      },
+      "minecraft:item_model": "minecraft:recovery_compass",
+      "minecraft:enchantment_glint_override": true,
+      "minecraft:rarity": "epic",
+      "minecraft:max_stack_size": 1,
+      "minecraft:max_damage": 10,
+      "minecraft:use_cooldown": {
+        "seconds": 45.0,
+        "cooldown_group": "chronomancie:stase"
+      },
+      "minecraft:lore": [
+        {
+          "text": "Clic droit : fige le temps autour de toi.",
+          "color": "gray",
+          "italic": false
+        },
+        {
+          "text": "Projectiles, monstres, TNT… tout s'arrête.",
+          "color": "gray",
+          "italic": false
+        },
+        {
+          "text": "Les coups portés s'accumulent jusqu'au dégel.",
+          "color": "gray",
+          "italic": false
+        },
+        {
+          "text": ""
+        },
+        {
+          "text": "Accroupi + fragment en main gauche : recharger",
+          "color": "dark_purple",
+          "italic": true
+        },
+        {
+          "text": "✦ Chronomancie",
+          "color": "dark_aqua",
+          "italic": false
+        }
+      ]
+    }
+  }
+}

@@ -11,3 +11,6 @@ pluginManagement {
 
 // Should match your modid
 rootProject.name = 'premiermod'
+
+// Deuxième mod : Chronomancie (dossier chronomancie/)
+include 'chronomancie'
