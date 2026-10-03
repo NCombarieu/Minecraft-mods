@@ -1,9 +1,35 @@
-# Example Mod
+# Premier Mod
 
-## Setup
+Mod Fabric pour **Minecraft 26.3**, côté serveur uniquement (les joueurs n'ont rien à installer).
 
-For setup instructions, please see the [Fabric Documentation page](https://docs.fabricmc.net/develop/getting-started/creating-a-project#setting-up) related to the IDE that you are using.
+## Fonctionnalités
 
-## License
+| Quoi | Comment | Fichier |
+|---|---|---|
+| Message de bienvenue | Automatique à la connexion | `events/ModEvents.java` |
+| Terre chanceuse 💎 | Casser de la terre : 1 chance sur 50 d'avoir un diamant | `events/ModEvents.java` |
+| Mouton arc-en-ciel 🌈 | Clic droit main vide sur un mouton | `events/ModEvents.java` |
+| `/heal` | Soigne et nourrit (ops seulement) | `commands/ModCommands.java` |
+| `/fusee` 🚀 | T'envoie dans les airs | `commands/ModCommands.java` |
+| `/de [faces]` 🎲 | Lance un dé (6 faces par défaut, 2 à 100) | `commands/ModCommands.java` |
 
-This template is available under the CC0 license. Feel free to learn from it and incorporate it in your own projects.
+## Compiler
+
+Il faut **Java 25**.
+
+```sh
+./gradlew build
+```
+
+Le mod est généré dans `build/libs/premiermod-<version>.jar`.
+
+## Installer sur un serveur
+
+1. Installer un serveur Fabric 26.3 : https://fabricmc.net/use/server/
+2. Mettre dans `mods/` : `premiermod-<version>.jar` et [Fabric API](https://modrinth.com/mod/fabric-api) pour 26.3.
+
+## Ajouter une fonctionnalité
+
+- **Nouvelle commande** : copier un bloc `dispatcher.register(...)` dans `ModCommands.java`.
+- **Réagir à un événement** (bloc cassé, clic sur une entité, connexion…) : ajouter un `XxxEvent.register(...)` dans `ModEvents.java`.
+  La liste des événements est dans la doc Fabric : https://docs.fabricmc.net/develop/events
