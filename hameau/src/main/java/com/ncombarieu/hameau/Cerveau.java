@@ -45,6 +45,17 @@ public final class Cerveau {
 	public record Plan(String nom, Map<String, String> palette, java.util.List<java.util.List<String>> couches, long tokensEntree, long tokensSortie, boolean secours, long perdusEntree, long perdusSortie) {
 	}
 
+	/** Une personnalité inventée par Claude. Les champs absents de la réponse sont null. */
+	public record Persona(String nom, Boolean femme, java.util.List<String> traits, String manie, String parler, String desir, String peur, String histoire,
+			String lienAvec, String lienPourToi, String lienPourLui, int opinion, int opinionDeLui, long tokensEntree, long tokensSortie) {
+		boolean complete() {
+			return !traits.isEmpty() && manie != null && parler != null && desir != null && peur != null;
+		}
+	}
+
+	public record Fondation(String nom, String culture, long tokensEntree, long tokensSortie) {
+	}
+
 	public static boolean pret() {
 		return client != null;
 	}
@@ -150,6 +161,86 @@ public final class Cerveau {
 					.collect(Collectors.joining());
 			return lire(texte, reponse.usage().inputTokens(), reponse.usage().outputTokens());
 		}, FILS);
+	}
+
+	private static final String NAISSANCE = """
+			Tu donnes vie à un habitant d'un village de Minecraft, dans une simulation où chaque villageois est ensuite joué, réplique après réplique, par une IA qui n'a que ta fiche pour savoir qui il est. Les joueurs se lassent vite quand les habitants se ressemblent : il faut quelqu'un de singulier, qu'on reconnaisse à sa façon de parler et à ce qu'il veut, avec des aspérités et des contradictions. Une personne, pas un archétype de conte. Appuie-toi sur le village décrit, sur son métier et sur les habitants déjà là : il doit trancher avec eux et pouvoir avoir des histoires avec eux.
+
+			Réponds UNIQUEMENT par un objet JSON, sans rien autour ni ``` :
+			{"nom":"…","traits":["…","…","…"],"manie":"…","parler":"…","desir":"…","peur":"…","histoire":"…","lien":{"avec":"…","pour_toi":"…","pour_lui":"…","opinion":0,"opinion_de_lui":0}}
+
+			- "nom" : un prénom seul, en un mot (lettres et tiret uniquement), dans le style des prénoms du village, différent de tous ceux déjà pris. Écarte les premiers prénoms qui te viennent : ce sont ceux qu'on a déjà vus partout.
+			- "traits" : 3 ou 4 traits de caractère, accordés à son sexe, dont au moins un vrai défaut.
+			- "manie" : une habitude bien à lui, écrite comme un groupe verbal à la 3e personne sans sujet, par exemple « range ses outils par ordre de taille ».
+			- "parler" : sa façon de s'exprimer (rythme, vocabulaire, tics de langage), sous la même forme, par exemple « parle bas et finit ses phrases par une question ».
+			- "desir" : ce qu'il veut vraiment, concret et à sa portée dans un village, à l'infinitif.
+			- "peur" : ce qu'il redoute, en un groupe nominal.
+			- "histoire" : deux phrases à la 2e personne (« Tu… ») : d'où il vient, ce qui l'a marqué, un secret ou une affaire en cours. Rien qui ne puisse exister dans Minecraft.
+			- "lien" : un lien ancien avec UN des habitants listés, seulement si on te le demande ; sinon null. "avec" = son prénom exact ; "pour_toi" = ce que ton personnage sait de ce lien, à la 2e personne, en nommant l'autre ; "pour_lui" = ce que l'autre en sait, à la 2e personne, en nommant ton personnage par son nouveau prénom (null s'il l'ignore) ; "opinion" et "opinion_de_lui" = de -50 à 50.
+			Tout en français. Chaque champ tient en une phrase courte, sauf "histoire".""";
+
+	private static final String FONDATION = """
+			Tu inventes l'identité d'un village de Minecraft, pour une simulation de vie où chaque habitant est joué par une IA. Chaque village du monde doit avoir sa propre couleur : en y arrivant, un joueur doit sentir qu'il n'est plus chez les voisins. Les habitants qui y naîtront recevront ton texte pour inventer leur prénom et leur caractère, puis pour vivre leur vie.
+
+			Réponds UNIQUEMENT par un objet JSON, sans rien autour ni ``` :
+			{"nom":"nom du village","culture":"…"}
+
+			"culture" : quatre ou cinq phrases en français, qui disent de quoi vit le village et ce dont il est fier, une coutume ou une croyance bien à lui, comment sonnent les prénoms d'ici (décris le style, sans donner de liste), une façon de parler commune (tournures, salutations, jurons), et une affaire qui divise ou inquiète les habitants en ce moment. Rien qui ne puisse exister dans Minecraft.""";
+
+	/** Un appel simple, avec le modèle des réflexions : consignes, demande, texte en retour. */
+	private static Message appeler(final AnthropicClient c, final HameauConfig config, final String consignes, final String demande) {
+		Thread.currentThread().setContextClassLoader(Cerveau.class.getClassLoader());
+		MessageCreateParams.Builder requete = MessageCreateParams.builder()
+				.model(config.modele)
+				.maxTokens(Math.max(config.maxTokensReponse, 1200))
+				.system(consignes)
+				.addUserMessage(demande);
+		if (config.effort != null && !config.effort.isBlank()) {
+			requete.outputConfig(com.anthropic.models.messages.OutputConfig.builder().effort(com.anthropic.models.messages.OutputConfig.Effort.LOW).build());
+		}
+		return c.messages().create(requete.build());
+	}
+
+	private static String texte(final Message reponse) {
+		return reponse.content().stream().flatMap(bloc -> bloc.text().stream()).map(TextBlock::text).collect(Collectors.joining());
+	}
+
+	/** Invente (ou réinvente) la personnalité d'un villageois. */
+	public static CompletableFuture<Persona> incarner(final String demande) {
+		HameauConfig config = HameauConfig.get();
+		AnthropicClient c = client;
+		return CompletableFuture.supplyAsync(() -> {
+			Message reponse = appeler(c, config, NAISSANCE, demande);
+			JsonObject json = extraire(texte(reponse));
+			java.util.List<String> traits = new java.util.ArrayList<>();
+			if (json.has("traits") && json.get("traits").isJsonArray()) {
+				for (JsonElement trait : json.getAsJsonArray("traits")) {
+					if (trait.isJsonPrimitive() && !trait.getAsString().isBlank() && traits.size() < 5) {
+						traits.add(trait.getAsString().trim());
+					}
+				}
+			}
+			JsonObject lien = json.has("lien") && json.get("lien").isJsonObject() ? json.getAsJsonObject("lien") : new JsonObject();
+			Boolean femme = json.has("femme") && json.get("femme").isJsonPrimitive() && json.getAsJsonPrimitive("femme").isBoolean() ? json.get("femme").getAsBoolean() : null;
+			return new Persona(chaine(json, "nom"), femme, traits, chaine(json, "manie"), chaine(json, "parler"), chaine(json, "desir"), chaine(json, "peur"), chaine(json, "histoire"),
+					chaine(lien, "avec"), chaine(lien, "pour_toi"), chaine(lien, "pour_lui"), entier(lien, "opinion"), entier(lien, "opinion_de_lui"),
+					reponse.usage().inputTokens(), reponse.usage().outputTokens());
+		}, FILS);
+	}
+
+	/** Invente le nom et la culture d'un village. */
+	public static CompletableFuture<Fondation> fonder(final String demande) {
+		HameauConfig config = HameauConfig.get();
+		AnthropicClient c = client;
+		return CompletableFuture.supplyAsync(() -> {
+			Message reponse = appeler(c, config, FONDATION, demande);
+			JsonObject json = extraire(texte(reponse));
+			return new Fondation(chaine(json, "nom"), chaine(json, "culture"), reponse.usage().inputTokens(), reponse.usage().outputTokens());
+		}, FILS);
+	}
+
+	private static int entier(final JsonObject json, final String cle) {
+		return json.has(cle) && json.get(cle).isJsonPrimitive() && json.getAsJsonPrimitive(cle).isNumber() ? Math.clamp(json.get(cle).getAsInt(), -50, 50) : 0;
 	}
 
 	private static final String ARCHITECTE = """

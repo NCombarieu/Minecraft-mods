@@ -79,6 +79,21 @@ public final class Vie {
 			ame.x = villageois.getBlockX();
 			ame.y = villageois.getBlockY();
 			ame.z = villageois.getBlockZ();
+			if (!ame.etranger && ame.village == null) {
+				Ames.rattacher(villageois, ame);
+			}
+			if (!enPause && Cerveau.pret() && enVol < config.appelsSimultanes && Ames.budget.autorise()) {
+				fonder(server, Ames.village(ame));
+			}
+			if (ame.ebauche) {
+				// Pas de réflexion avant d'avoir une personnalité ; le village d'abord, pour que l'habitant lui ressemble.
+				Ames.Village village = Ames.village(ame);
+				boolean villagePret = ame.etranger || village == null || village.culture != null;
+				if (!enPause && Cerveau.pret() && !ame.enCours && villagePret && maintenant >= ame.prochaineNaissance && enVol < config.appelsSimultanes && Ames.budget.autorise()) {
+					naitre(server, villageois, ame, null);
+				}
+				continue;
+			}
 			if (ame.prochainePensee == 0) {
 				ame.prochainePensee = maintenant + (10 + HASARD.nextInt(Math.max(1, config.intervallePensee / 2))) * 20L;
 			}
@@ -196,6 +211,112 @@ public final class Vie {
 		}
 		ame.noter(texte);
 		ame.presser(maintenant, 2);
+	}
+
+	/** Demande à Claude le nom et la culture d'un village qui n'en a pas encore. */
+	private static void fonder(final MinecraftServer server, final Ames.Village village) {
+		if (village == null || village.culture != null || village.enCours) {
+			return;
+		}
+		village.enCours = true;
+		enVol++;
+		Cerveau.fonder(Perception.fondation(village)).whenComplete((fondation, erreur) -> server.execute(() -> {
+			enVol--;
+			village.enCours = false;
+			if (erreur == null) {
+				Ames.budget.enregistrer(fondation.tokensEntree(), fondation.tokensSortie());
+			}
+			if (erreur != null || fondation.nom() == null || fondation.culture() == null) {
+				Hameau.LOGGER.warn("Hameau : village non fondé : {}", erreur != null ? erreur.toString() : "réponse incomplète");
+				if (++village.echecs >= 2) {
+					// Tant pis : ses habitants naîtront sans culture commune.
+					village.culture = "";
+				}
+				return;
+			}
+			village.nom = fondation.nom();
+			village.culture = fondation.culture();
+			Ames.sauvegarder();
+			Hameau.LOGGER.info("Hameau : village fondé — {} : {}", village.nom, village.culture);
+		}));
+	}
+
+	/**
+	 * Claude invente la personnalité du villageois (naissance, /hameau renaitre) ou la modifie selon ame.consigne (/hameau personnalite).
+	 * @param retour à qui annoncer le résultat, ou null
+	 */
+	static void naitre(final MinecraftServer server, final Villager villageois, final Ame ame, final net.minecraft.commands.CommandSourceStack retour) {
+		String demande = Perception.naissance(villageois, ame, Ames.village(ame));
+		boolean surDemande = ame.consigne != null;
+		ame.enCours = true;
+		enVol++;
+		UUID uuid = villageois.getUUID();
+		Cerveau.incarner(demande).whenComplete((persona, erreur) -> server.execute(() -> {
+			enVol--;
+			ame.enCours = false;
+			long apres = server.getTickCount();
+			if (erreur == null) {
+				Ames.budget.enregistrer(persona.tokensEntree(), persona.tokensSortie());
+			}
+			if (erreur != null || !persona.complete()) {
+				Hameau.LOGGER.warn("Hameau : personnalité de {} non inventée : {}", ame.nom, erreur != null ? erreur.toString() : "réponse incomplète");
+				ame.prochaineNaissance = apres + 30 * 20;
+				if (++ame.echecsNaissance >= 3) {
+					// On s'en tient au brouillon tiré au sort.
+					ame.ebauche = false;
+					ame.consigne = null;
+				}
+				if (retour != null) {
+					retour.sendFailure(Component.literal("Claude n'a pas pu réécrire " + ame.nom + ". Nouvel essai dans 30 secondes."));
+				}
+				return;
+			}
+			Villager present = trouver(server, uuid);
+			String ancien = ame.nom;
+			if ((surDemande || !ame.baptise) && Ames.prenomLibre(persona.nom(), ame)) {
+				Ames.renommer(ame, persona.nom(), present);
+			}
+			if (persona.femme() != null && persona.femme() != ame.femme && surDemande) {
+				ame.femme = persona.femme();
+				if (present != null) {
+					Corps.retirer(present);
+				}
+			}
+			ame.traits = new ArrayList<>(persona.traits());
+			ame.manie = persona.manie();
+			ame.parler = persona.parler();
+			ame.desir = persona.desir();
+			ame.peur = persona.peur();
+			if (persona.histoire() != null) {
+				ame.histoire = persona.histoire();
+			}
+			Ame autre = persona.lienAvec() != null ? Ames.parNom(persona.lienAvec()) : null;
+			if (!ame.lie && !ame.etranger && autre != null && autre != ame && persona.lienPourToi() != null) {
+				ame.lie = true;
+				ame.liens.add(persona.lienPourToi());
+				ame.ajusterRelation(autre.nom, persona.opinion());
+				if (persona.lienPourLui() != null) {
+					autre.liens.add(persona.lienPourLui());
+				}
+				autre.ajusterRelation(ame.nom, persona.opinionDeLui());
+			}
+			// Un étranger n'a de lien avec personne ; les autres, faute de lien inventé, en reçoivent un tiré au sort (Ames.de).
+			ame.lie |= ame.etranger;
+			if (surDemande) {
+				ame.noter("Tu te sens changé, comme si tu devenais enfin toi-même.");
+			}
+			ame.ebauche = false;
+			ame.consigne = null;
+			ame.echecsNaissance = 0;
+			ame.prochainePensee = apres + (3 + HASARD.nextInt(10)) * 20L;
+			Ames.sauvegarder();
+			Hameau.LOGGER.info("Hameau : {}{} — {} | manie : {} | parle : {} | désire : {} | craint : {} | {}", ame.nom, ancien.equals(ame.nom) ? "" : " (jusqu'ici " + ancien + ")",
+					String.join(", ", ame.traits), ame.manie, ame.parler, ame.desir, ame.peur, ame.histoire);
+			if (retour != null) {
+				retour.sendSuccess(() -> Component.literal(ame.nom + (ancien.equals(ame.nom) ? "" : " (jusqu'ici " + ancien + ")") + " est désormais : " + String.join(", ", ame.traits)
+						+ ". /hameau ame " + ame.nom + " pour sa fiche.").withStyle(ChatFormatting.YELLOW), false);
+			}
+		}));
 	}
 
 	static void reflechir(final MinecraftServer server, final Villager villageois, final Ame ame, final long maintenant) {

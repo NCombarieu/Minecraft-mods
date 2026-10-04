@@ -29,6 +29,20 @@ public final class Ame {
 	/** Liens anciens avec d'autres habitants : jamais oubliés. */
 	public List<String> liens = new ArrayList<>();
 	public boolean lie;
+	/** D'où il vient, ce qui l'a marqué : inventé par Claude à sa naissance. */
+	public String histoire;
+	/** Identifiant de son village (Ames.Village), une fois qu'il y est rattaché. */
+	public Integer village;
+	/** Apparu par /summon ou par un œuf : sans village tant qu'on ne l'y a pas présenté (/hameau presenter). */
+	public boolean etranger;
+	/** Prénom donné par un joueur (étiquette) : Claude le garde en inventant le reste. */
+	public boolean baptise;
+	/** Vrai tant que Claude n'a pas inventé (ou réinventé) sa personnalité : il ne réfléchit pas avant. */
+	public boolean ebauche;
+	/** Demande d'un joueur (/hameau personnalite) à suivre lors de la prochaine réinvention. */
+	public String consigne;
+	transient int echecsNaissance;
+	transient long prochaineNaissance;
 	/** Ce qu'il compte faire dans les heures qui viennent ; il l'entretient lui-même. */
 	public String projet;
 	public String humeur = "calme";

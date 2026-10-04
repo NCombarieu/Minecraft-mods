@@ -52,6 +52,9 @@ public final class HameauConfig {
 	/** Pseudos de comptes Minecraft dont emprunter le skin. Vide : les neuf skins fournis avec le jeu. */
 	public java.util.List<String> peauxJoueurs = new java.util.ArrayList<>();
 
+	/** Le serveur redistribue lui-même le chat des joueurs, en messages système : chacun le voit quels que soient ses réglages de chat sécurisé. */
+	public boolean chatFiable = true;
+
 	public Batir batir = new Batir();
 
 	public static final class Batir {

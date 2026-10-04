@@ -18,7 +18,9 @@ import com.mojang.brigadier.suggestion.SuggestionsBuilder;
 import net.minecraft.ChatFormatting;
 import net.minecraft.commands.CommandSourceStack;
 import net.minecraft.commands.Commands;
+import net.minecraft.network.chat.ClickEvent;
 import net.minecraft.network.chat.Component;
+import net.minecraft.network.chat.HoverEvent;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.npc.villager.Villager;
@@ -26,7 +28,12 @@ import net.minecraft.world.level.entity.EntityTypeTest;
 import net.minecraft.world.phys.AABB;
 
 /**
+ * /hameau help [commande]       — la liste des commandes, ou le détail de l'une d'elles (tout le monde)
  * /hameau etat                  — dépense et activité (tout le monde)
+ * /hameau village               — nom et culture du village où l'on se trouve (tout le monde)
+ * /hameau personnalite <prénom> <demande> — réécrit son caractère selon la demande (ops)
+ * /hameau renaitre <prénom|tous> — lui fait inventer une identité toute neuve par Claude (ops)
+ * /hameau presenter <prénom>    — fait d'un étranger (/summon, œuf) un habitant du village (ops)
  * /hameau qui                   — les villageois des environs, par prénom (tout le monde)
  * /hameau ame [prénom]          — fiche intime d'un villageois, le plus proche par défaut (ops)
  * /hameau penser [prénom]       — le fait réfléchir tout de suite (ops)
@@ -49,6 +56,28 @@ public final class HameauCommande {
 
 	public static void register(final CommandDispatcher<CommandSourceStack> dispatcher) {
 		dispatcher.register(Commands.literal("hameau")
+				.executes(c -> aide(c, null))
+				.then(Commands.literal("help").executes(c -> aide(c, null))
+						.then(Commands.argument("commande", StringArgumentType.word())
+								.suggests((c, b) -> net.minecraft.commands.SharedSuggestionProvider.suggest(AIDES.stream().map(Aide::nom), b))
+								.executes(c -> aide(c, StringArgumentType.getString(c, "commande")))))
+				.then(Commands.literal("aide").executes(c -> aide(c, null))
+						.then(Commands.argument("commande", StringArgumentType.word())
+								.suggests((c, b) -> net.minecraft.commands.SharedSuggestionProvider.suggest(AIDES.stream().map(Aide::nom), b))
+								.executes(c -> aide(c, StringArgumentType.getString(c, "commande")))))
+				.then(Commands.literal("village").executes(HameauCommande::village))
+				.then(Commands.literal("personnalite")
+						.requires(Commands.hasPermission(Commands.LEVEL_GAMEMASTERS))
+						.then(Commands.argument("prenom et demande", StringArgumentType.greedyString()).suggests(HameauCommande::prenoms)
+								.executes(HameauCommande::personnalite)))
+				.then(Commands.literal("renaitre")
+						.requires(Commands.hasPermission(Commands.LEVEL_GAMEMASTERS))
+						.then(Commands.argument("prenom", StringArgumentType.greedyString()).suggests(HameauCommande::prenoms)
+								.executes(HameauCommande::renaitre)))
+				.then(Commands.literal("presenter")
+						.requires(Commands.hasPermission(Commands.LEVEL_GAMEMASTERS))
+						.then(Commands.argument("prenom", StringArgumentType.greedyString()).suggests(HameauCommande::prenoms)
+								.executes(c -> presenter(c, nomme(c, StringArgumentType.getString(c, "prenom"))))))
 				.then(Commands.literal("etat").executes(HameauCommande::etat))
 				.then(Commands.literal("qui").executes(HameauCommande::qui))
 				.then(Commands.literal("ame")
@@ -89,6 +118,164 @@ public final class HameauCommande {
 				.then(Commands.literal("recharger")
 						.requires(Commands.hasPermission(Commands.LEVEL_GAMEMASTERS))
 						.executes(HameauCommande::recharger)));
+	}
+
+	private record Aide(String nom, String usage, boolean ops, String resume, List<String> detail) {
+	}
+
+	private static final List<Aide> AIDES = List.of(
+			new Aide("help", "/hameau help [commande]", false, "Cette liste, ou le détail d'une commande.",
+					List.of("Exemple : /hameau help faire", "Les prénoms se complètent avec Tab et s'écrivent avec ou sans accents.")),
+			new Aide("qui", "/hameau qui", false, "Les villageois des environs : prénom, métier, humeur, distance.",
+					List.of("Pratique pour retrouver le prénom de quelqu'un avant de lui parler.")),
+			new Aide("village", "/hameau village", false, "Le nom du village où tu te trouves, et ce qui le rend différent des autres.",
+					List.of("Chaque village a sa culture, inventée par Claude : ses habitants en tirent leurs prénoms, leur parler, leurs coutumes.")),
+			new Aide("etat", "/hameau etat", false, "Hameau tourne-t-il ? Dépense du jour et totale, modèle, villageois éveillés.",
+					List.of("« plafond de dépense atteint » : les villageois se taisent jusqu'à demain, ou jusqu'à ce qu'on relève le plafond dans config/hameau.json.")),
+			new Aide("ame", "/hameau ame [prénom]", true, "La fiche intime d'un villageois : caractère, histoire, liens, opinions, projet, souvenirs.",
+					List.of("Sans prénom : le villageois le plus proche de toi.", "Exemple : /hameau ame Josselin")),
+			new Aide("penser", "/hameau penser [prénom]", true, "Le fait réfléchir tout de suite, sans attendre son tour.",
+					List.of("Sans prénom : le plus proche. Coûte un appel à Claude.", "Utile quand un villageois reste planté là après un événement.")),
+			new Aide("dire", "/hameau dire <prénom> <texte>", true, "Lui parler d'où que tu sois, sans être à côté de lui.",
+					List.of("Exemple : /hameau dire Odile rejoins-moi sur la place", "Près de lui, pas besoin de commande : écris dans le chat en citant son prénom.",
+							"Tu ne lis sa réponse que si tu es à moins de 24 blocs de lui.")),
+			new Aide("faire", "/hameau faire <prénom> <action> [cible] [; action cible…]", true, "Lui impose une action, sans demander son avis à Claude.",
+					List.of("Actions : aller, suivre, fuir, donner, fabriquer, danser, frapper, couper, casser, labourer, poser, ecrire, utiliser, batir, prendre, arreter.",
+							"Cible : un prénom ou un pseudo, « maison », « travail », « place », ou des coordonnées x y z.",
+							"Exemples : /hameau faire Perrin aller place",
+							"/hameau faire Perrin couper 3 64 9 ; aller place",
+							"/hameau faire Perrin batir 10 64 10 une cabane de pêcheur",
+							"/hameau faire Perrin fabriquer cake   (identifiant Minecraft en anglais)")),
+			new Aide("personnalite", "/hameau personnalite <prénom> <demande>", true, "Change son caractère : décris en français ce que tu veux, Claude réécrit sa fiche.",
+					List.of("Exemples : /hameau personnalite Josselin un vieux pirate grincheux qui déteste les poules",
+							"/hameau personnalite Odile elle devient timide et parle en rimes",
+							"/hameau personnalite Raoul il s'appelle maintenant Barberousse",
+							"Il garde ses souvenirs et ses relations. Coûte un appel à Claude.")),
+			new Aide("renaitre", "/hameau renaitre <prénom|tous>", true, "Claude lui invente une identité toute neuve : prénom, caractère, histoire.",
+					List.of("Il garde ses souvenirs et ses relations ; les autres le connaissent sous son nouveau prénom.",
+							"« tous » : tous les villageois connus, au fur et à mesure qu'un joueur passe près d'eux. Un appel à Claude par villageois.")),
+			new Aide("presenter", "/hameau presenter <prénom>", true, "Fait d'un étranger un habitant du village où il se trouve.",
+					List.of("Un villageois apparu par /summon ou par un œuf reste un étranger, sans village, tant qu'on ne l'a pas présenté.",
+							"Les villageois présents assistent à la présentation et s'en souviennent.")),
+			new Aide("oubli", "/hameau oubli <joueur>", true, "Tous les villageois oublient ce joueur : griefs, opinions, souvenirs.",
+					List.of("Exemple : /hameau oubli Etiennoo", "Pour repartir de zéro après une bagarre qui a mal tourné.")),
+			new Aide("modele", "/hameau modele <haiku|sonnet|opus> [plans <haiku|sonnet|opus>]", true, "Change le modèle de Claude, sans redémarrer.",
+					List.of("haiku : rapide et économique. sonnet : plus fin. opus : le plus malin, le plus cher.",
+							"« plans » règle à part le modèle qui dessine les constructions.", "Exemple : /hameau modele haiku plans sonnet")),
+			new Aide("pause", "/hameau pause", true, "Suspend tous les appels à Claude : les villageois ne réfléchissent plus.", List.of("/hameau reprendre pour relancer.")),
+			new Aide("reprendre", "/hameau reprendre", true, "Relance les appels à Claude après une pause.", List.of()),
+			new Aide("recharger", "/hameau recharger", true, "Relit config/hameau.json et la clé API, sans redémarrer.", List.of()));
+
+	private static Component cliquable(final Aide aide, final ChatFormatting couleur) {
+		String saisie = aide.usage().split(" [<\\[]", 2)[0] + (aide.usage().contains("<") || aide.usage().contains("[") ? " " : "");
+		return Component.literal(aide.usage()).withStyle(style -> style.withColor(couleur)
+				.withClickEvent(new ClickEvent.SuggestCommand(saisie))
+				.withHoverEvent(new HoverEvent.ShowText(Component.literal("Clique pour l'écrire dans le chat"))));
+	}
+
+	private static int aide(final CommandContext<CommandSourceStack> c, final String commande) {
+		boolean op = Commands.hasPermission(Commands.LEVEL_GAMEMASTERS).test(c.getSource());
+		if (commande != null) {
+			String cherche = Ames.simplifier(commande);
+			for (Aide aide : AIDES) {
+				if (aide.nom().equals(cherche)) {
+					c.getSource().sendSuccess(() -> cliquable(aide, ChatFormatting.YELLOW), false);
+					ligne(c, aide.resume() + (aide.ops() ? " (réservé aux opérateurs)" : ""), ChatFormatting.WHITE);
+					aide.detail().forEach(texte -> ligne(c, texte, ChatFormatting.GRAY));
+					return 1;
+				}
+			}
+			ligne(c, "Pas de commande « " + commande + " ». Voici celles qui existent :", ChatFormatting.RED);
+		}
+		ligne(c, "Hameau — les commandes" + (op ? "" : " (les grisées sont réservées aux opérateurs)"), ChatFormatting.GOLD);
+		for (Aide aide : AIDES) {
+			c.getSource().sendSuccess(() -> Component.empty().append(cliquable(aide, aide.ops() && !op ? ChatFormatting.DARK_GRAY : ChatFormatting.YELLOW))
+					.append(Component.literal(" — " + aide.resume()).withStyle(ChatFormatting.GRAY)), false);
+		}
+		ligne(c, "/hameau help <commande> pour le détail et des exemples.", ChatFormatting.GOLD);
+		ligne(c, "Sans commande : parle dans le chat près d'un villageois (cite son prénom pour t'adresser à lui) ; accroupi + clic droit avec un objet pour le lui offrir.", ChatFormatting.GRAY);
+		return 1;
+	}
+
+	private static int village(final CommandContext<CommandSourceStack> c) {
+		Ames.Village village = Ames.villageVers((int) c.getSource().getPosition().x, (int) c.getSource().getPosition().z);
+		if (village == null || village.nom == null) {
+			ligne(c, village == null ? "Aucun village connu ici. Il sera fondé dès qu'un villageois des environs s'éveillera près d'un joueur."
+					: "Ce village n'a pas encore de nom : Claude est en train de l'inventer.", ChatFormatting.GRAY);
+			return 0;
+		}
+		int habitants = 0;
+		for (Ame ame : Ames.toutes()) {
+			habitants += ame.village != null && ame.village == village.id ? 1 : 0;
+		}
+		ligne(c, village.nom + " — " + habitants + " habitants", ChatFormatting.YELLOW);
+		ligne(c, village.culture, ChatFormatting.GRAY);
+		return 1;
+	}
+
+	private static int personnalite(final CommandContext<CommandSourceStack> c) throws CommandSyntaxException {
+		String[] parties = StringArgumentType.getString(c, "prenom et demande").trim().split("\\s+", 2);
+		if (parties.length < 2) {
+			throw new SimpleCommandExceptionType(Component.literal("Usage : /hameau personnalite <prénom> <ce que tu veux changer>")).create();
+		}
+		Villager villageois = nomme(c, parties[0]);
+		Ame ame = Ames.de(villageois);
+		if (!Cerveau.pret() || !Ames.budget.autorise()) {
+			// Sans Claude pour réécrire la fiche, la demande devient telle quelle le fond du personnage.
+			ame.histoire = "Voici qui tu es, avant tout le reste : " + parties[1];
+			ligne(c, "Claude est indisponible (clé absente ou plafond atteint) : la demande est ajoutée telle quelle à la fiche de " + ame.nom + ".", ChatFormatting.YELLOW);
+			return 1;
+		}
+		ame.consigne = parties[1];
+		ame.ebauche = true;
+		ame.echecsNaissance = 0;
+		ame.prochaineNaissance = 0;
+		if (ame.enCours) {
+			ligne(c, ame.nom + " est en pleine réflexion : il changera dans quelques secondes.", ChatFormatting.YELLOW);
+			return 1;
+		}
+		Vie.naitre(c.getSource().getServer(), villageois, ame, c.getSource());
+		ligne(c, "Claude réécrit " + ame.nom + "…", ChatFormatting.YELLOW);
+		return 1;
+	}
+
+	private static int renaitre(final CommandContext<CommandSourceStack> c) throws CommandSyntaxException {
+		String prenom = StringArgumentType.getString(c, "prenom").trim();
+		List<Ame> ames = new ArrayList<>();
+		if (prenom.equalsIgnoreCase("tous")) {
+			ames.addAll(Ames.toutes());
+		} else {
+			ames.add(Ames.de(nomme(c, prenom)));
+		}
+		for (Ame ame : ames) {
+			ame.consigne = null;
+			ame.ebauche = true;
+			ame.echecsNaissance = 0;
+			ame.prochaineNaissance = 0;
+		}
+		ligne(c, (ames.size() == 1 ? ames.getFirst().nom + " va renaître" : ames.size() + " villageois vont renaître") + " : nouvelle identité dans quelques secondes, dès qu'un joueur est à portée.", ChatFormatting.YELLOW);
+		return ames.size();
+	}
+
+	private static int presenter(final CommandContext<CommandSourceStack> c, final Villager villageois) {
+		Ame ame = Ames.de(villageois);
+		if (!ame.etranger) {
+			Ames.Village sien = Ames.village(ame);
+			ligne(c, ame.nom + " est déjà d'ici" + (sien != null && sien.nom != null ? " : il est de " + sien.nom + "." : "."), ChatFormatting.GRAY);
+			return 0;
+		}
+		ame.etranger = false;
+		villageois.removeTag(Ames.TAG_ETRANGER);
+		Ames.Village village = Ames.rattacher(villageois, ame);
+		String ou = village.nom != null ? "au village de " + village.nom : "au village";
+		String qui = c.getSource().getTextName();
+		long maintenant = c.getSource().getServer().getTickCount();
+		ame.noter(qui + " t'a présenté " + ou + " : tu en fais désormais partie, on t'y a accueilli comme l'un des leurs.");
+		ame.retenir("(" + Perception.moment((ServerLevel) villageois.level()) + ") " + qui + " t'a présenté " + ou + ", qui t'a adopté.");
+		ame.presser(maintenant, 2);
+		Vie.temoins(villageois, null, qui + " vient de présenter " + ame.nom + " " + ou + " : cet étranger venu d'ailleurs est maintenant des vôtres.", true);
+		ligne(c, ame.nom + " est présenté " + ou + " : il en fait partie.", ChatFormatting.YELLOW);
+		return 1;
 	}
 
 	/** Les villageois chargés du monde de la source, du plus proche au plus lointain. */
@@ -170,6 +357,14 @@ public final class HameauCommande {
 	private static int ame(final CommandContext<CommandSourceStack> c, final Villager villageois) {
 		Ame ame = Ames.de(villageois);
 		ligne(c, ame.nom + ", " + Perception.metier(villageois) + " — " + String.join(", ", ame.traits), ChatFormatting.YELLOW);
+		Ames.Village village = Ames.village(ame);
+		if (ame.ebauche) {
+			ligne(c, "Brouillon tiré au sort : Claude n'a pas encore inventé sa personnalité.", ChatFormatting.RED);
+		}
+		ligne(c, ame.etranger ? "Étranger, sans village (/hameau presenter pour l'y faire entrer)." : village != null && village.nom != null ? "Du village de " + village.nom + "." : "Village pas encore fondé.", ChatFormatting.GRAY);
+		if (ame.histoire != null) {
+			ligne(c, ame.histoire, ChatFormatting.GRAY);
+		}
 		ligne(c, "Manie : " + ame.manie + ". Parle : " + ame.parler + ".", ChatFormatting.GRAY);
 		ligne(c, "Désire : " + ame.desir + ". Craint : " + ame.peur + ". Humeur : " + ame.humeur + ".", ChatFormatting.GRAY);
 		for (String lien : ame.liens) {

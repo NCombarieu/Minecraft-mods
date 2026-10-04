@@ -276,6 +276,21 @@ public final class Corps {
 		}
 	}
 
+	static void nommer(final Villager villageois, final String nom) {
+		Lie lie = CORPS.get(villageois.getUUID());
+		if (lie != null) {
+			lie.corps.setCustomName(Component.literal(nom).withStyle(ChatFormatting.YELLOW));
+		}
+	}
+
+	/** Retire le corps ; il est recréé à la seconde suivante, d'après la fiche à jour (silhouette d'homme ou de femme). */
+	static void retirer(final Villager villageois) {
+		Lie lie = CORPS.remove(villageois.getUUID());
+		if (lie != null) {
+			lie.corps.discard();
+		}
+	}
+
 	static void toutRetirer() {
 		CORPS.values().forEach(lie -> lie.corps.discard());
 		CORPS.clear();

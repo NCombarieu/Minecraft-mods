@@ -81,7 +81,23 @@ public final class Ames {
 		{"Tu soupçonnes %s de tricher aux paris du village.", -15, null, 0}
 	};
 
+	private static final String[] DEBUTS = {
+		"Al", "Am", "Ar", "Bal", "Ber", "Bri", "Cal", "Cor", "Dag", "Dor", "El", "Er", "Fal", "Fer", "Gal", "Gon", "Hal", "Hé", "Il", "Is",
+		"Jo", "Ker", "Lan", "Lu", "Mal", "Mer", "Nan", "No", "Od", "Or", "Per", "Ro", "Sa", "Sy", "Tan", "Thé", "Ul", "Va", "Wil", "Yv", "Zé"
+	};
+	private static final String[] MILIEUX = {"a", "e", "i", "o", "an", "ar", "el", "en", "ér", "il", "in", "ol", "or", "ui", "", ""};
+	private static final String[] FINS_F = {"a", "ane", "elle", "ène", "ette", "ia", "ie", "ine", "ise", "ora", "wen", "ys"};
+	private static final String[] FINS_M = {"ard", "as", "bert", "eau", "ic", "ien", "in", "mond", "o", "on", "ot", "ric"};
+	/** Mots tirés au sort et glissés dans les demandes d'invention : sans eux, le modèle retombe sur les mêmes idées. */
+	private static final String[] GERMES = {
+		"brume", "dette", "cloche", "sel", "renard", "exil", "miel", "foudre", "serment", "four", "jumeau", "rouille", "carte", "fièvre", "moisson",
+		"corde", "héritage", "source", "masque", "cendre", "pari", "naufrage", "chanson", "puits", "frontière", "veillée", "os", "marché", "silence", "loup",
+		"gel", "tambour", "relique", "verger", "orphelin", "enclume", "marée", "rumeur", "lanterne", "tricherie", "pèlerin", "ruche", "éboulement", "noces", "épice",
+		"charbon", "prophétie", "barque", "vendetta", "champignon", "comète", "taupe", "duel", "grenier", "cicatrice", "troc", "ermite", "pont", "corbeau", "fête"
+	};
+
 	private static final Map<UUID, Ame> AMES = new LinkedHashMap<>();
+	private static final List<Village> VILLAGES = new ArrayList<>();
 	private static final Random HASARD = new Random();
 	static Budget budget = new Budget();
 	/** Chunks maintenus chargés pour la vie hors ligne (monde principal). */
@@ -95,6 +111,138 @@ public final class Ames {
 		List<Ame> ames = new ArrayList<>();
 		Budget budget = new Budget();
 		Set<Long> chunksForces = new HashSet<>();
+		List<Village> villages = new ArrayList<>();
+	}
+
+	/** Un village et sa couleur propre (inventée par Claude) : ses habitants en héritent prénoms, parler et coutumes. */
+	public static final class Village {
+		public int id;
+		public String nom;
+		/** Type de village d'après ses habitants : plains, desert, savanna, taiga, snow, swamp, jungle. */
+		public String type;
+		/** Vide si l'invention a échoué : les habitants naissent alors sans elle. */
+		public String culture;
+		public int x;
+		public int z;
+		transient boolean enCours;
+		transient int echecs;
+	}
+
+	static final int RAYON_VILLAGE = 128;
+	public static final String TAG_ETRANGER = "hameau.etranger";
+
+	static List<Village> villages() {
+		return Collections.unmodifiableList(VILLAGES);
+	}
+
+	static Village village(final Ame ame) {
+		if (ame.village != null) {
+			for (Village village : VILLAGES) {
+				if (village.id == ame.village) {
+					return village;
+				}
+			}
+		}
+		return null;
+	}
+
+	/** Le village fondé le plus proche de ce point, ou null s'il n'y en a pas à portée. */
+	static Village villageVers(final int x, final int z) {
+		Village proche = null;
+		long meilleure = Long.MAX_VALUE;
+		for (Village village : VILLAGES) {
+			long dx = village.x - x;
+			long dz = village.z - z;
+			if (Math.abs(dx) < RAYON_VILLAGE && Math.abs(dz) < RAYON_VILLAGE && dx * dx + dz * dz < meilleure) {
+				meilleure = dx * dx + dz * dz;
+				proche = village;
+			}
+		}
+		return proche;
+	}
+
+	/** Rattache l'âme au village où elle se trouve ; le fonde (encore sans nom ni culture) s'il n'existe pas. */
+	static Village rattacher(final Villager villageois, final Ame ame) {
+		Village village = village(ame);
+		if (village == null) {
+			village = villageVers(villageois.getBlockX(), villageois.getBlockZ());
+		}
+		if (village == null) {
+			village = new Village();
+			village.id = VILLAGES.stream().mapToInt(v -> v.id).max().orElse(0) + 1;
+			village.x = villageois.getBlockX();
+			village.z = villageois.getBlockZ();
+			village.type = villageois.getVillagerData().type().unwrapKey().map(cle -> cle.identifier().getPath()).orElse("plains");
+			VILLAGES.add(village);
+		}
+		ame.village = village.id;
+		return village;
+	}
+
+	static String germes(final int combien) {
+		List<String> tires = new ArrayList<>();
+		while (tires.size() < combien) {
+			String mot = auHasard(GERMES);
+			if (!tires.contains(mot)) {
+				tires.add(mot);
+			}
+		}
+		return String.join(", ", tires);
+	}
+
+	static char initiale() {
+		return "ABCDEFGHIJKLMNOPRSTUVYZ".charAt(HASARD.nextInt(23));
+	}
+
+	static int age() {
+		return 17 + HASARD.nextInt(60);
+	}
+
+	/** Prénom provisoire (ou définitif sans clé API), assemblé syllabe par syllabe. */
+	private static String prenom(final boolean femme) {
+		for (int essai = 0; essai < 40; essai++) {
+			String nom = auHasard(DEBUTS) + auHasard(MILIEUX) + auHasard(femme ? FINS_F : FINS_M);
+			if (nom.length() <= 11 && parNom(nom) == null && !nom.matches(".*[aeiouéèy]{3}.*")) {
+				return nom;
+			}
+		}
+		return auHasard(DEBUTS) + auHasard(femme ? FINS_F : FINS_M) + "-" + (AMES.size() + 1);
+	}
+
+	/** Un prénom utilisable : un seul mot (les commandes le lisent ainsi), et pas déjà porté. */
+	static boolean prenomLibre(final String nom, final Ame pour) {
+		if (nom == null || !nom.matches("[\\p{L}][\\p{L}-]{1,15}")) {
+			return false;
+		}
+		Ame porteur = parNom(nom);
+		return porteur == null || porteur == pour;
+	}
+
+	/** Change le prénom partout : sur le villageois, dans les opinions et dans les souvenirs des autres. */
+	static void renommer(final Ame ame, final String nouveau, final Villager villageois) {
+		String ancien = ame.nom;
+		ame.nom = nouveau;
+		if (villageois != null) {
+			villageois.setCustomName(Component.literal(nouveau).withStyle(ChatFormatting.YELLOW));
+			Corps.nommer(villageois, nouveau);
+		}
+		if (ancien == null || ancien.equals(nouveau)) {
+			return;
+		}
+		java.util.regex.Pattern motif = java.util.regex.Pattern.compile("(?<![\\p{L}-])" + java.util.regex.Pattern.quote(ancien) + "(?![\\p{L}-])");
+		String remplacement = java.util.regex.Matcher.quoteReplacement(nouveau);
+		for (Ame autre : AMES.values()) {
+			Integer opinion = autre.relations.remove(ancien);
+			if (opinion != null && autre != ame) {
+				autre.relations.put(nouveau, opinion);
+			}
+			for (List<String> textes : List.of(autre.liens, autre.marquants, autre.recents, autre.nouveaux)) {
+				textes.replaceAll(t -> motif.matcher(t).replaceAll(remplacement));
+			}
+			if (autre.projet != null) {
+				autre.projet = motif.matcher(autre.projet).replaceAll(remplacement);
+			}
+		}
 	}
 
 	public static Collection<Ame> toutes() {
@@ -134,7 +282,7 @@ public final class Ames {
 		if (ame.manie == null) {
 			completer(ame);
 		}
-		if (!ame.lie && AMES.size() > 1) {
+		if (!ame.lie && !ame.ebauche && !ame.etranger && AMES.size() > 1) {
 			lier(ame);
 		}
 		ame.enfant = villageois.isBaby();
@@ -154,14 +302,14 @@ public final class Ames {
 		String porte = villageois.getCustomName() != null ? villageois.getCustomName().getString().trim() : "";
 		if (!porte.isEmpty() && !porte.contains(" ") && parNom(porte) == null) {
 			ame.nom = porte;
+			ame.baptise = true;
 			ame.femme = List.of(PRENOMS_F).contains(porte) || (!List.of(PRENOMS_M).contains(porte) && ame.femme);
 		} else {
-			List<String> libres = new ArrayList<>(List.of(ame.femme ? PRENOMS_F : PRENOMS_M));
-			for (Ame autre : AMES.values()) {
-				libres.remove(autre.nom);
-			}
-			ame.nom = libres.isEmpty() ? auHasard(ame.femme ? PRENOMS_F : PRENOMS_M) + "-" + (AMES.size() + 1) : libres.get(HASARD.nextInt(libres.size()));
+			ame.nom = prenom(ame.femme);
 		}
+		// Ce qui suit n'est qu'un brouillon : Claude invente la vraie personnalité dès que le villageois s'éveille (Vie.naitre).
+		ame.ebauche = true;
+		ame.etranger = villageois.entityTags().contains(TAG_ETRANGER);
 		ame.traits.add(auHasard(QUALITES));
 		String seconde = auHasard(QUALITES);
 		if (HASARD.nextBoolean() && !ame.traits.contains(seconde)) {
@@ -201,7 +349,7 @@ public final class Ames {
 	}
 
 	/** Donne à l'âme un lien ancien avec un habitant du même village : de quoi nourrir des histoires. */
-	private static void lier(final Ame ame) {
+	static void lier(final Ame ame) {
 		List<Ame> voisins = new ArrayList<>();
 		for (Ame autre : AMES.values()) {
 			if (autre != ame && Math.abs(autre.x - ame.x) < 96 && Math.abs(autre.z - ame.z) < 96 && !ame.relations.containsKey(autre.nom)) {
@@ -247,6 +395,7 @@ public final class Ames {
 		AMES.clear();
 		budget = new Budget();
 		chunksForces = new HashSet<>();
+		VILLAGES.clear();
 		dossier = server.getWorldPath(LevelResource.ROOT).resolve("hameau");
 		Path fichier = dossier.resolve("ames.json");
 		if (!Files.exists(fichier)) {
@@ -263,6 +412,9 @@ public final class Ames {
 				}
 				budget = lue.budget != null ? lue.budget : new Budget();
 				chunksForces = lue.chunksForces != null ? lue.chunksForces : new HashSet<>();
+				if (lue.villages != null) {
+					VILLAGES.addAll(lue.villages);
+				}
 			}
 			Hameau.LOGGER.info("Hameau : {} âmes retrouvées. {}", AMES.size(), budget.resume());
 		} catch (IOException | RuntimeException e) {
@@ -278,6 +430,7 @@ public final class Ames {
 		sauvegarde.ames.addAll(AMES.values());
 		sauvegarde.budget = budget;
 		sauvegarde.chunksForces = chunksForces;
+		sauvegarde.villages.addAll(VILLAGES);
 		try {
 			Files.createDirectories(dossier);
 			Path temporaire = dossier.resolve("ames.json.tmp");

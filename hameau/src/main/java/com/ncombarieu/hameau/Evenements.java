@@ -32,6 +32,16 @@ public final class Evenements {
 	}
 
 	static void register() {
+		// Le chat signé est filtré côté client (réglage « chat sécurisé uniquement », horloge déréglée, joueur masqué, compte restreint) :
+		// certains ne voient alors pas les messages des autres. Redistribué en message système, il s'affiche chez tout le monde.
+		ServerMessageEvents.ALLOW_CHAT_MESSAGE.register((message, joueur, type) -> {
+			if (!HameauConfig.get().chatFiable) {
+				return true;
+			}
+			joueur.level().getServer().getPlayerList().broadcastSystemMessage(type.decorate(message.decoratedContent()), false);
+			entendre(joueur, message.signedContent());
+			return false;
+		});
 		ServerMessageEvents.CHAT_MESSAGE.register((message, joueur, type) -> {
 			String texte = message.signedContent();
 			joueur.level().getServer().execute(() -> entendre(joueur, texte));
