@@ -174,6 +174,7 @@ public final class HameauCommande {
 							"Pour aller plus loin, les textes donnés à Claude sont dans config/hameau/ sur le serveur : esprit.txt (comportement des villageois), naissance.txt (genre de personnages inventés), village.txt (genre de villages). Après modification : /hameau recharger.")),
 			new Aide("voix", "/hameau voix [prénom] [voix]", false, "La voix parlée des villageois : état, voix disponibles, voix de chacun.",
 					List.of("Pour les entendre, installe le mod Simple Voice Chat (Fabric) : les villageois parlent alors à voix haute, en 3D. Leur volume se règle dans Simple Voice Chat, catégorie « Villageois ».",
+							"Tu peux aussi leur parler au micro : à moins de 10 blocs d'un villageois, regarde-le (ou dis son prénom) et parle. Ce qui a été compris s'affiche en gris dans ton chat.",
 							"/hameau voix : la synthèse marche-t-elle, combien de caractères dits aujourd'hui, et la liste des voix.",
 							"/hameau voix Josselin : la voix de Josselin (opérateurs).",
 							"/hameau voix Josselin Bill : lui donne la voix « Bill » (opérateurs). Sinon Claude choisit la voix à la naissance, d'après le caractère.")),

@@ -39,6 +39,7 @@ public class Hameau implements ModInitializer {
 			Vie.tick(server);
 			Actions.tick(server);
 			Corps.tick(server);
+			Voix.tick(server);
 			Bulles.tick(server.getTickCount());
 		});
 		ServerLifecycleEvents.SERVER_STOPPING.register(server -> {

@@ -15,6 +15,21 @@ public final class Budget {
 	public long voixCaracteres;
 	public long voixJour;
 
+	/** Secondes de parole des joueurs transcrites. */
+	public long ecouteSecondes;
+	public long ecouteJour;
+
+	public boolean ecouteAutorisee() {
+		changerDeJour();
+		return ecouteJour < HameauConfig.get().voix.plafondSecondesEcouteParJour;
+	}
+
+	public void ecoutee(final long secondes) {
+		changerDeJour();
+		ecouteSecondes += secondes;
+		ecouteJour += secondes;
+	}
+
 	public boolean voixAutorisee(final int caracteres) {
 		changerDeJour();
 		return voixJour + caracteres <= HameauConfig.get().voix.plafondCaracteresParJour;
@@ -32,6 +47,7 @@ public final class Budget {
 			jour = aujourdhui;
 			jourUsd = 0;
 			voixJour = 0;
+			ecouteJour = 0;
 		}
 	}
 

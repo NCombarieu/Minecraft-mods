@@ -45,6 +45,9 @@ public final class Voix {
 
 		/** Diffuse un son (48 kHz, mono) depuis le villageois. */
 		void jouer(Villager villageois, short[] son, UUID seul, float distance);
+
+		/** Appelé régulièrement : clôt les prises de parole terminées. */
+		void tick();
 	}
 
 	public record Timbre(String id, String nom, String genre, String age, String description) {
@@ -60,6 +63,8 @@ public final class Voix {
 	/** Dernier refus d'ElevenLabs (quota épuisé, clé invalide…), affiché par /hameau voix ; null si tout va bien. */
 	static volatile String panne;
 	private static volatile long pauseJusqua;
+	private static volatile long ecoutePauseJusqua;
+	static volatile MinecraftServer serveur;
 
 	private Voix() {
 	}
@@ -114,6 +119,81 @@ public final class Voix {
 		return texte.length() > 300 ? texte.substring(0, 300) + "…" : texte;
 	}
 
+	static void tick(final MinecraftServer server) {
+		serveur = server;
+		Diffuseur d = diffuseur;
+		if (d != null && server.getTickCount() % 4 == 0) {
+			d.tick();
+		}
+	}
+
+	/** Les villageois écoutent-ils les micros en ce moment ? */
+	public static boolean ecoute() {
+		HameauConfig.Voix config = HameauConfig.get().voix;
+		return config.actif && config.ecoute && cle != null && serveur != null && System.currentTimeMillis() >= ecoutePauseJusqua;
+	}
+
+	/**
+	 * Un joueur vient de dire quelque chose au micro : si un villageois est assez près pour l'entendre, on transcrit et il l'entend comme un message du chat.
+	 * @param son sa prise de parole, 48 kHz mono
+	 */
+	public static void entendu(final UUID joueur, final short[] son) {
+		MinecraftServer server = serveur;
+		if (server == null || !ecoute()) {
+			return;
+		}
+		server.execute(() -> {
+			net.minecraft.server.level.ServerPlayer parleur = server.getPlayerList().getPlayer(joueur);
+			if (parleur == null || parleur.isSpectator() || Vie.enPause || !Ames.budget.ecouteAutorisee()
+					|| parleur.level().getEntitiesOfClass(Villager.class, parleur.getBoundingBox().inflate(10), Villager::isAlive).isEmpty()) {
+				return;
+			}
+			long secondes = Math.max(1, son.length / 48000);
+			byte[] wav = wav(son);
+			String frontiere = "hameau" + Long.toHexString(HASARD.nextLong());
+			java.io.ByteArrayOutputStream corps = new java.io.ByteArrayOutputStream();
+			for (String[] champ : new String[][] {{"model_id", "scribe_v1"}, {"language_code", "fr"}, {"tag_audio_events", "false"}}) {
+				corps.writeBytes(("--" + frontiere + "\r\nContent-Disposition: form-data; name=\"" + champ[0] + "\"\r\n\r\n" + champ[1] + "\r\n").getBytes(StandardCharsets.UTF_8));
+			}
+			corps.writeBytes(("--" + frontiere + "\r\nContent-Disposition: form-data; name=\"file\"; filename=\"parole.wav\"\r\nContent-Type: audio/wav\r\n\r\n").getBytes(StandardCharsets.UTF_8));
+			corps.writeBytes(wav);
+			corps.writeBytes(("\r\n--" + frontiere + "--\r\n").getBytes(StandardCharsets.UTF_8));
+			HttpRequest requete = HttpRequest.newBuilder(URI.create(API + "/speech-to-text")).header("xi-api-key", cle)
+					.header("Content-Type", "multipart/form-data; boundary=" + frontiere).timeout(Duration.ofSeconds(20))
+					.POST(HttpRequest.BodyPublishers.ofByteArray(corps.toByteArray())).build();
+			HTTP.sendAsync(requete, HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8)).whenComplete((reponse, erreur) -> server.execute(() -> {
+				if (erreur != null || reponse.statusCode() != 200) {
+					boolean durable = erreur == null && (reponse.statusCode() == 401 || reponse.statusCode() == 402 || reponse.statusCode() == 403);
+					ecoutePauseJusqua = System.currentTimeMillis() + (durable ? 30 * 60_000L : 20_000L);
+					Hameau.LOGGER.warn("Hameau : parole de {} non transcrite : {}", parleur.getName().getString(), erreur != null ? erreur.toString() : reponse.statusCode() + " " + abrege(reponse.body()));
+					return;
+				}
+				Ames.budget.ecoutee(secondes);
+				String dit = texte(JsonParser.parseString(reponse.body()).getAsJsonObject(), "text").replaceAll("\\([^)]*\\)", " ").replaceAll("\\s+", " ").trim();
+				// Un souffle ou un bruit donne une transcription vide ou d'un seul signe.
+				if (dit.replaceAll("[^\\p{L}\\p{N}]", "").length() < 2 || parleur.isRemoved()) {
+					return;
+				}
+				Hameau.LOGGER.info("<{}> (au micro) {}", parleur.getName().getString(), dit);
+				parleur.sendSystemMessage(net.minecraft.network.chat.Component.literal("Tu dis : « " + dit + " »").withStyle(net.minecraft.ChatFormatting.DARK_GRAY, net.minecraft.ChatFormatting.ITALIC));
+				Evenements.entendre(parleur, dit, true);
+			}));
+		});
+	}
+
+	/** Fichier WAV 16 kHz mono : trois fois plus léger que le 48 kHz du micro, et bien assez pour de la parole. */
+	private static byte[] wav(final short[] son) {
+		int echantillons = son.length / 3;
+		ByteBuffer wav = ByteBuffer.allocate(44 + echantillons * 2).order(ByteOrder.LITTLE_ENDIAN);
+		wav.put("RIFF".getBytes(StandardCharsets.US_ASCII)).putInt(36 + echantillons * 2).put("WAVEfmt ".getBytes(StandardCharsets.US_ASCII))
+				.putInt(16).putShort((short) 1).putShort((short) 1).putInt(16000).putInt(32000).putShort((short) 2).putShort((short) 16)
+				.put("data".getBytes(StandardCharsets.US_ASCII)).putInt(echantillons * 2);
+		for (int i = 0; i < echantillons; i++) {
+			wav.putShort((short) ((son[i * 3] + son[i * 3 + 1] + son[i * 3 + 2]) / 3));
+		}
+		return wav.array();
+	}
+
 	/** Les villageois parlent-ils à voix haute en ce moment ? */
 	static boolean active() {
 		return HameauConfig.get().voix.actif && diffuseur != null && cle != null && !catalogue.isEmpty();
@@ -133,7 +213,7 @@ public final class Voix {
 		if (catalogue.isEmpty()) {
 			return panne != null ? panne : "liste des voix en cours de chargement";
 		}
-		return (panne != null ? "en panne : " + panne : "active") + " — " + catalogue.size() + " voix, " + Ames.budget.voixJour + " caractères dits aujourd'hui (plafond " + config.plafondCaracteresParJour
+		return (panne != null ? "en panne : " + panne : "active") + (config.ecoute ? ", micro écouté (" + Ames.budget.ecouteJour + " s aujourd'hui, plafond " + config.plafondSecondesEcouteParJour + ")" : ", micro non écouté") + " — " + catalogue.size() + " voix, " + Ames.budget.voixJour + " caractères dits aujourd'hui (plafond " + config.plafondCaracteresParJour
 				+ "), " + Ames.budget.voixCaracteres + " au total";
 	}
 

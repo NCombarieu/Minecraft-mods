@@ -39,12 +39,12 @@ public final class Evenements {
 				return true;
 			}
 			joueur.level().getServer().getPlayerList().broadcastSystemMessage(type.decorate(message.decoratedContent()), false);
-			entendre(joueur, message.signedContent());
+			entendre(joueur, message.signedContent(), false);
 			return false;
 		});
 		ServerMessageEvents.CHAT_MESSAGE.register((message, joueur, type) -> {
 			String texte = message.signedContent();
-			joueur.level().getServer().execute(() -> entendre(joueur, texte));
+			joueur.level().getServer().execute(() -> entendre(joueur, texte, false));
 		});
 
 		// Un coup porté au corps atteint en réalité le villageois.
@@ -166,7 +166,8 @@ public final class Evenements {
 	}
 
 	/** Un joueur parle : le villageois nommé (ou le plus proche) est interpellé, les autres entendent. */
-	private static void entendre(final ServerPlayer joueur, final String texte) {
+	/** @param vocal dit au micro : le prénom peut avoir été mal transcrit, alors le villageois qu'on regarde est celui à qui l'on parle */
+	static void entendre(final ServerPlayer joueur, final String texte, final boolean vocal) {
 		if (texte.startsWith("/") || joueur.isSpectator()) {
 			return;
 		}
@@ -182,6 +183,17 @@ public final class Evenements {
 			if (minuscule.contains(Ames.simplifier(Ames.de(villageois).nom))) {
 				vise = villageois;
 				break;
+			}
+		}
+		if (vise == null && vocal) {
+			double meilleur = 0.9;
+			for (Villager villageois : proches) {
+				net.minecraft.world.phys.Vec3 vers = villageois.getEyePosition().subtract(joueur.getEyePosition()).normalize();
+				double alignement = vers.dot(joueur.getLookAngle());
+				if (alignement > meilleur) {
+					meilleur = alignement;
+					vise = villageois;
+				}
 			}
 		}
 		if (vise == null && joueur.distanceTo(proches.getFirst()) <= 6) {

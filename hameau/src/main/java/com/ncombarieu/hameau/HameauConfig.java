@@ -66,6 +66,10 @@ public final class HameauConfig {
 		public float distance = 24;
 		/** Au-delà, les villageois se taisent jusqu'au lendemain (le texte reste dans le chat). */
 		public int plafondCaracteresParJour = 5000;
+		/** Les villageois entendent-ils ce que les joueurs disent au micro (Simple Voice Chat) près d'eux ? */
+		public boolean ecoute = true;
+		/** Secondes de parole transcrites par jour, au plus ; au-delà il faut de nouveau écrire dans le chat. */
+		public int plafondSecondesEcouteParJour = 900;
 	}
 
 	public Batir batir = new Batir();
