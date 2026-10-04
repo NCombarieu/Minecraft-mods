@@ -47,6 +47,13 @@ public final class Ame {
 	public String consigne;
 	transient int echecsNaissance;
 	transient long prochaineNaissance;
+	/** La place qu'il s'est donnée au village (métier inventé, fonction, titre) ; les autres la voient. */
+	public String role;
+	/** Celui qu'il sert (joueur ou villageois) : il le suit et lui obéit. */
+	public String maitre;
+	/** Au service de quelqu'un : le suit-il, ou l'attend-il sur place ? */
+	public boolean suit;
+	transient long derniereAnnonce = -100000;
 	/** Ce qu'il compte faire dans les heures qui viennent ; il l'entretient lui-même. */
 	public String projet;
 	public String humeur = "calme";

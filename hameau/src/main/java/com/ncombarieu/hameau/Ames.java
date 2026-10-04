@@ -124,6 +124,8 @@ public final class Ames {
 		public String culture;
 		public int x;
 		public int z;
+		/** Ce que tout le village sait : fonctions prises, règles, décisions communes. Écrit par les habitants eux-mêmes. */
+		public List<String> chronique = new ArrayList<>();
 		transient boolean enCours;
 		transient int echecs;
 	}
@@ -413,7 +415,12 @@ public final class Ames {
 				budget = lue.budget != null ? lue.budget : new Budget();
 				chunksForces = lue.chunksForces != null ? lue.chunksForces : new HashSet<>();
 				if (lue.villages != null) {
-					VILLAGES.addAll(lue.villages);
+					for (Village village : lue.villages) {
+						if (village.chronique == null) {
+							village.chronique = new ArrayList<>();
+						}
+						VILLAGES.add(village);
+					}
 				}
 			}
 			Hameau.LOGGER.info("Hameau : {} âmes retrouvées. {}", AMES.size(), budget.resume());

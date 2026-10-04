@@ -85,6 +85,7 @@ public final class Vie {
 			if (!enPause && Cerveau.pret() && enVol < config.appelsSimultanes && Ames.budget.autorise()) {
 				fonder(server, Ames.village(ame));
 			}
+			Actions.escorter(villageois, ame);
 			if (ame.ebauche) {
 				// Pas de réflexion avant d'avoir une personnalité ; le village d'abord, pour que l'habitant lui ressemble.
 				Ames.Village village = Ames.village(ame);
@@ -150,27 +151,22 @@ public final class Vie {
 		}
 	}
 
+	/** Des amorces volontairement vagues : c'est au villageois d'en faire quelque chose, selon son caractère. */
 	private static final String[] IMPREVUS = {
 		"Tu viens de trouver une émeraude par terre.|EMERALD",
 		"Tu as fait cette nuit un rêve étrange où {autre} tenait un grand rôle, et tu n'arrives pas à te l'ôter de la tête.",
-		"Tu t'aperçois que ton porte-bonheur a disparu. Tu es presque sûr de l'avoir vu hier chez {autre}.",
-		"Une idée te vient : et si le village organisait une fête ? Il faudrait en parler aux autres.",
-		"Tu as une envie terrible de quelque chose de sucré, et tu n'as rien de tel.",
-		"On t'a rapporté que {autre} aurait dit du mal de toi. Tu ne sais pas si c'est vrai.",
-		"Tu as cueilli une fleur en chemin et tu te demandes à qui l'offrir.|POPPY",
-		"Tu es d'excellente humeur sans savoir pourquoi : tu as envie de faire plaisir à quelqu'un.",
-		"Tu repenses à un pari que tu voudrais proposer à {autre}.",
+		"On t'a rapporté quelque chose sur {autre}. Tu ne sais pas si c'est vrai.",
+		"Tu es d'excellente humeur sans savoir pourquoi.",
 		"Tu as mal dormi et tout t'agace un peu aujourd'hui.",
-		"Tu as retrouvé au fond de ta poche un biscuit que tu avais oublié.|COOKIE",
-		"Tu te dis que tu ne connais pas assez {autre} et qu'il serait temps d'y remédier.",
-		"Un souvenir d'enfance te revient et te donne envie de le raconter à quelqu'un.",
-		"Tu trouves que le village manque de quelque chose, et tu as ton idée sur ce qu'il faudrait y construire.",
-		"Tu as entendu un bruit bizarre du côté des champs cette nuit. Tu voudrais savoir si d'autres l'ont entendu.",
-		"Tu as composé une petite chanson et tu brûles de la faire entendre.",
-		"Tu t'ennuies : il te faut de la compagnie ou une bêtise à faire.",
-		"Tu as un service à demander, et tu cherches qui pourrait te le rendre.",
-		"Tu te sens d'humeur à pardonner une vieille querelle.",
-		"Tu as une nouvelle croustillante à partager et tu cherches à qui la dire."
+		"Tu te dis que tu ne connais pas assez {autre}.",
+		"Un souvenir d'enfance te revient.",
+		"Tu trouves que quelque chose ne tourne pas rond au village, et tu as ton idée là-dessus.",
+		"Tu t'ennuies.",
+		"Tu te demandes si tu fais vraiment ce que tu veux de ta vie.",
+		"Tu as besoin de quelque chose que tu n'as pas.",
+		"Tu repenses à ce que tu désires le plus, et tu te dis qu'il serait temps de t'y mettre.",
+		"Tu trouves que {autre} prend beaucoup de place ces temps-ci.",
+		"Une idée te trotte dans la tête depuis ce matin."
 	};
 
 	/** De temps en temps, la vie apporte un petit imprévu à un villageois éveillé : la graine d'une histoire. */
@@ -364,6 +360,33 @@ public final class Vie {
 		for (Map.Entry<String, Integer> relation : decision.relations().entrySet()) {
 			ame.ajusterRelation(relation.getKey(), relation.getValue());
 		}
+		if (decision.role() != null) {
+			String role = decision.role().length() > 60 ? decision.role().substring(0, 60) : decision.role();
+			ame.role = Ames.simplifier(role).matches("aucun|rien|personne") ? null : role;
+		}
+		Ames.Village village = Ames.village(ame);
+		if (decision.annonce() != null && village != null && !ame.etranger && maintenant - ame.derniereAnnonce > 6000) {
+			// Mémoire commune, bornée : les faits les plus anciens s'effacent.
+			ame.derniereAnnonce = maintenant;
+			String annonce = decision.annonce().length() > 160 ? decision.annonce().substring(0, 160) : decision.annonce();
+			village.chronique.add("(" + Perception.moment((ServerLevel) villageois.level()) + ") " + ame.nom + " : " + annonce);
+			while (village.chronique.size() > 8) {
+				village.chronique.removeFirst();
+			}
+			Hameau.LOGGER.info("[{}] annonce au village : {}", ame.nom, annonce);
+		}
+		if (decision.sert() != null) {
+			if (Ames.simplifier(decision.sert()).matches("personne|aucun|rien|null")) {
+				if (ame.maitre != null) {
+					affranchir(villageois, ame);
+				}
+			} else {
+				Entity maitre = present(villageois, decision.sert());
+				if (maitre != null) {
+					engager(villageois, ame, Perception.nom(maitre));
+				}
+			}
+		}
 		if (decision.souvenir() != null) {
 			ame.retenir("(" + Perception.moment((ServerLevel) villageois.level()) + ") " + decision.souvenir());
 		}
@@ -384,6 +407,33 @@ public final class Vie {
 		Hameau.LOGGER.info("[{}] {} | {} | action={} cible={} objet={}{} | {}", ame.nom, decision.pensee(), decision.geste(), decision.action(), decision.cible(), decision.objet(),
 				decision.suite().isEmpty() ? "" : " puis " + decision.suite().stream().map(e -> e.action() + " " + e.cible()).toList(),
 				decision.parole() == null ? "(se tait)" : (decision.prive() ? "(chuchote) " : "") + "« " + decision.parole() + " »");
+	}
+
+	/** Le villageois entre au service de quelqu'un : il le suivra et lui obéira. */
+	static void engager(final Villager villageois, final Ame ame, final String maitre) {
+		if (maitre.equals(ame.maitre)) {
+			return;
+		}
+		ame.maitre = maitre;
+		ame.suit = true;
+		ame.retenir("(" + Perception.moment((ServerLevel) villageois.level()) + ") Tu es entré au service de " + maitre + ".");
+		temoins(villageois, null, ame.nom + " est entré au service de " + maitre + ".", false);
+		ServerPlayer joueur = villageois.level().getServer().getPlayerList().getPlayerByName(maitre);
+		if (joueur != null) {
+			joueur.sendSystemMessage(Component.literal(ame.nom + " est maintenant à ton service : il te suit et t'obéit. Dis-lui « reste ici » ou « suis-moi » ; /hameau liberer " + ame.nom + " pour le congédier.")
+					.withStyle(ChatFormatting.GOLD));
+		}
+	}
+
+	static void affranchir(final Villager villageois, final Ame ame) {
+		String ancien = ame.maitre;
+		ame.maitre = null;
+		ame.suit = false;
+		ame.retenir("(" + Perception.moment((ServerLevel) villageois.level()) + ") Tu n'es plus au service de " + ancien + ".");
+		ServerPlayer joueur = villageois.level().getServer().getPlayerList().getPlayerByName(ancien);
+		if (joueur != null) {
+			joueur.sendSystemMessage(Component.literal(ame.nom + " n'est plus à ton service.").withStyle(ChatFormatting.GOLD));
+		}
 	}
 
 	private static Entity present(final Villager villageois, final String nom) {

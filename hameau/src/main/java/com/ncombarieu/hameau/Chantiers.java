@@ -78,7 +78,14 @@ public final class Chantiers {
 				Hameau.LOGGER.info("[{}] plan « {} » couche {} : {}", ame.nom, plan.nom(), c, String.join(" | ", plan.couches().get(c)));
 			}
 			Hameau.LOGGER.info("[{}] palette : {}", ame.nom, plan.palette());
-			Ame.Chantier chantier = tracer(plan, centre, level);
+			// Un pont, un quai, un ajout à une bâtisse existante se font là où on l'a dit ; tout le reste cherche un terrain plat et libre.
+			boolean surPlace = Ames.simplifier(description).matches(".*\\b(pont|ponton|passerelle|quai|jetee|port|barrage|digue|agrandi\\w*|rallonge|annexe|toit|etage|reparer|repare)\\b.*");
+			Ame.Chantier chantier = tracer(plan, centre, level, !surPlace);
+			if (chantier == null) {
+				ame.noter("Tu n'as trouvé aucun terrain plat et dégagé à moins de " + RAYON_TERRAIN + " blocs de " + Perception.coord(centre)
+						+ " pour bâtir « " + plan.nom() + " » : trop de relief, d'eau ou de constructions. Il faudra choisir un autre endroit, à l'écart.");
+				return;
+			}
 			if (chantier.restants.isEmpty()) {
 				ame.noter("Ton plan ne contenait rien de constructible. Il faudra y repenser.");
 				return;
@@ -107,7 +114,84 @@ public final class Chantiers {
 	}
 
 	/** Transforme le plan en liste de blocs à poser : du bas vers le haut, les éléments fragiles (portes, torches) en dernier. */
-	private static Ame.Chantier tracer(final Cerveau.Plan plan, final BlockPos centre, final ServerLevel level) {
+	static final int RAYON_TERRAIN = 24;
+
+	/** Le niveau du sol dans cette colonne, sous les arbres et les herbes. */
+	private static int sol(final ServerLevel level, final int x, final int z) {
+		BlockPos.MutableBlockPos pos = new BlockPos.MutableBlockPos(x, level.getHeightmapPos(Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, new BlockPos(x, 0, z)).getY() - 1, z);
+		for (int descente = 0; descente < 16; descente++) {
+			BlockState etat = level.getBlockState(pos);
+			if (!etat.is(BlockTags.LOGS) && !etat.is(BlockTags.LEAVES) && !(etat.canBeReplaced() && etat.getFluidState().isEmpty())) {
+				break;
+			}
+			pos.move(Direction.DOWN);
+		}
+		return pos.getY();
+	}
+
+	/** Un sol sur lequel on peut fonder : terre, sable, roche — ni eau, ni chemin, ni champ, ni ouvrage de quelqu'un. */
+	private static boolean constructible(final BlockState etat) {
+		return etat.getFluidState().isEmpty() && (etat.is(BlockTags.DIRT) || etat.is(BlockTags.BASE_STONE_OVERWORLD) || etat.is(BlockTags.SAND) || etat.is(BlockTags.TERRACOTTA)
+				|| etat.is(BlockTags.SNOW) || etat.is(Blocks.GRAVEL) || etat.is(Blocks.CLAY) || etat.is(Blocks.SANDSTONE) || etat.is(Blocks.RED_SANDSTONE) || etat.is(Blocks.SNOW_BLOCK));
+	}
+
+	/**
+	 * Cherche autour de l'endroit voulu le terrain le plus proche qui convienne à l'emprise : à peu près plat, sans eau, et où rien n'a été bâti.
+	 * @return le coin nord-ouest de l'emprise, ou null s'il n'y a rien de convenable à portée
+	 */
+	private static BlockPos terrain(final ServerLevel level, final BlockPos centre, final int largeur, final int profondeur, final int hauteur) {
+		List<int[]> decalages = new ArrayList<>();
+		for (int dx = -RAYON_TERRAIN; dx <= RAYON_TERRAIN; dx += 3) {
+			for (int dz = -RAYON_TERRAIN; dz <= RAYON_TERRAIN; dz += 3) {
+				decalages.add(new int[] {dx, dz});
+			}
+		}
+		decalages.sort(java.util.Comparator.comparingInt(d -> d[0] * d[0] + d[1] * d[1]));
+		BlockPos passable = null;
+		for (int[] decalage : decalages) {
+			int ox = centre.getX() + decalage[0] - largeur / 2;
+			int oz = centre.getZ() + decalage[1] - profondeur / 2;
+			if (!level.isLoaded(new BlockPos(ox, centre.getY(), oz)) || !level.isLoaded(new BlockPos(ox + largeur, centre.getY(), oz + profondeur))) {
+				continue;
+			}
+			int bas = Integer.MAX_VALUE;
+			int haut = Integer.MIN_VALUE;
+			boolean libre = true;
+			// Une marge d'un bloc autour de l'emprise : on ne colle pas ses murs à ceux du voisin.
+			for (int i = -1; i <= largeur && libre; i++) {
+				for (int l = -1; l <= profondeur && libre; l++) {
+					int y = sol(level, ox + i, oz + l);
+					bas = Math.min(bas, y);
+					haut = Math.max(haut, y);
+					libre = haut - bas <= 4 && constructible(level.getBlockState(new BlockPos(ox + i, y, oz + l)));
+				}
+			}
+			if (!libre) {
+				continue;
+			}
+			// Rien de bâti non plus dans le volume : un auvent, une clôture, une lanterne trahissent un lieu déjà occupé.
+			for (int i = 0; i < largeur && libre; i++) {
+				for (int l = 0; l < profondeur && libre; l++) {
+					for (int y = bas + 1; y <= haut + hauteur && libre; y++) {
+						BlockState etat = level.getBlockState(new BlockPos(ox + i, y, oz + l));
+						libre = etat.isAir() || terrain(etat);
+					}
+				}
+			}
+			if (!libre) {
+				continue;
+			}
+			if (haut - bas <= 2) {
+				return new BlockPos(ox, 0, oz);
+			}
+			if (passable == null) {
+				passable = new BlockPos(ox, 0, oz);
+			}
+		}
+		return passable;
+	}
+
+	private static Ame.Chantier tracer(final Cerveau.Plan plan, final BlockPos centre, final ServerLevel level, final boolean chercherTerrain) {
 		HameauConfig.Batir reglages = HameauConfig.get().batir;
 		int hauteur = Math.min(plan.couches().size(), reglages.hauteurMax);
 		int profondeur = 0;
@@ -120,16 +204,24 @@ public final class Chantiers {
 		}
 		Ame.Chantier chantier = new Ame.Chantier();
 		chantier.nom = plan.nom();
-		chantier.x = centre.getX();
-		chantier.z = centre.getZ();
 		int ox = centre.getX() - largeur / 2;
 		int oz = centre.getZ() - profondeur / 2;
+		if (chercherTerrain) {
+			BlockPos coin = terrain(level, centre, largeur, profondeur, hauteur);
+			if (coin == null) {
+				return null;
+			}
+			ox = coin.getX();
+			oz = coin.getZ();
+		}
+		chantier.x = ox + largeur / 2;
+		chantier.z = oz + profondeur / 2;
 		// Le sol du bâtiment remplace la couche supérieure du terrain, au niveau médian de l'emprise :
 		// une butte sera entaillée, un creux comblé par les fondations.
 		List<Integer> niveaux = new ArrayList<>();
 		for (int i = 0; i < largeur; i += 2) {
 			for (int l = 0; l < profondeur; l += 2) {
-				niveaux.add(level.getHeightmapPos(Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, new BlockPos(ox + i, 0, oz + l)).getY() - 1);
+				niveaux.add(sol(level, ox + i, oz + l));
 			}
 		}
 		niveaux.sort(null);

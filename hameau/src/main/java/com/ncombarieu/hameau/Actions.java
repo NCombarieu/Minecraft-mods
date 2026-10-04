@@ -46,6 +46,16 @@ public final class Actions {
 		int blocsFaits;
 		/** Pour « batir » : l'âme à qui appartient le chantier (soi-même, ou celui qu'on aide). */
 		Ame proprietaire;
+		/** Pour « miner » et « recolter » : ce qu'on cherche, combien, les blocs à dégager avant d'avancer, la case où avancer ensuite. */
+		java.util.function.Predicate<BlockState> ressource;
+		String nomRessource;
+		int objectif;
+		java.util.ArrayDeque<BlockPos> aDegager = new java.util.ArrayDeque<>();
+		BlockPos pas;
+		long delaiPas;
+		BlockPos filon;
+		boolean surFilon;
+		int galerie;
 	}
 
 	/** Les étapes suivantes du plan de chaque villageois, et ceux qui s'interrompent pour écouter quelqu'un. */
@@ -125,6 +135,15 @@ public final class Actions {
 			}
 			return;
 		}
+		if (ame.maitre != null && (type.equals("rester") || (type.equals("suivre") && ame.maitre.equalsIgnoreCase(cible)))) {
+			ame.suit = type.equals("suivre");
+			abandonner(villageois);
+			return;
+		}
+		if (type.equals("rester")) {
+			// Sans maître, rester sur place n'est rien de plus que continuer.
+			return;
+		}
 		abandonner(villageois);
 		if (type.equals("arreter")) {
 			if (ame.chantier != null) {
@@ -141,11 +160,17 @@ public final class Actions {
 	private static String normaliser(final String action) {
 		return switch (action == null ? "rien" : action) {
 			case "offrir" -> "donner";
-			case "attaquer", "taper" -> "frapper";
+			case "attaquer", "taper", "chasser", "tuer", "abattre_bete" -> "frapper";
+			case "creuser_mine", "extraire", "piocher_minerai", "prospecter" -> "miner";
+			case "recolter", "récolter", "moissonner", "cueillir" -> "recolter";
+			case "ranger", "déposer", "stocker" -> "deposer";
+			case "collecter" -> "ramasser";
+			case "se_nourrir" -> "manger";
+			case "attendre_ici", "reste", "rester_ici" -> "rester";
 			case "voler" -> "prendre";
 			case "accompagner" -> "suivre";
 			case "abattre", "bucheronner", "bûcheronner", "couper_arbre" -> "couper";
-			case "creuser", "miner", "piocher" -> "casser";
+			case "creuser", "piocher" -> "casser";
 			case "becher", "bêcher", "biner" -> "labourer";
 			case "construire", "bâtir", "aider" -> "batir";
 			case "crafter", "cuisiner", "forger", "confectionner", "creer", "créer" -> "fabriquer";
@@ -168,7 +193,8 @@ public final class Actions {
 			case "poser" -> autonomie.poser;
 			case "prendre" -> autonomie.prendreDansCoffres;
 			case "batir" -> autonomie.batir;
-			case "fabriquer", "danser" -> true;
+			case "fabriquer", "danser", "manger", "ramasser", "recolter", "deposer" -> true;
+			case "miner" -> autonomie.casser;
 			case "ecrire", "utiliser" -> autonomie.poser;
 			default -> false;
 		};
@@ -190,6 +216,27 @@ public final class Actions {
 			}
 			case "danser" -> {
 				geste.fin = maintenant + 6 * 20;
+				GESTES.put(villageois.getUUID(), geste);
+				return true;
+			}
+			case "manger" -> {
+				manger(villageois, ame);
+				return false;
+			}
+			case "ramasser", "recolter" -> {
+				geste.fin = maintenant + 90 * 20;
+				GESTES.put(villageois.getUUID(), geste);
+				return true;
+			}
+			case "miner" -> {
+				String quoi = (cible == null ? "" : cible) + " " + (objet == null || objet.equals(cible) ? "" : objet);
+				java.util.regex.Matcher nombre = java.util.regex.Pattern.compile("\\b(\\d{1,2})\\b").matcher(TROIS_NOMBRES.matcher(quoi).replaceAll(""));
+				geste.objectif = nombre.find() ? Math.clamp(Integer.parseInt(nombre.group(1)), 1, 16) : 6;
+				geste.nomRessource = ressource(quoi, geste);
+				geste.fin = maintenant + 8 * 60 * 20;
+				if (villageois.isSleeping()) {
+					villageois.stopSleeping();
+				}
 				GESTES.put(villageois.getUUID(), geste);
 				return true;
 			}
@@ -242,8 +289,14 @@ public final class Actions {
 					geste.pos = lieu(villageois, cible);
 				}
 			}
-			case "suivre", "donner", "frapper" -> geste.cible = personne(villageois, level, cible);
-			case "casser", "couper", "labourer", "poser", "prendre" -> geste.pos = coordonnees(cible);
+			case "suivre", "donner" -> geste.cible = personne(villageois, level, cible);
+			case "frapper" -> {
+				geste.cible = personne(villageois, level, cible);
+				if (geste.cible == null) {
+					geste.cible = bete(villageois, level, cible);
+				}
+			}
+			case "casser", "couper", "labourer", "poser", "prendre", "deposer" -> geste.pos = coordonnees(cible);
 			default -> {
 				geste.pos = lieu(villageois, cible);
 				if (geste.pos == null) {
@@ -282,6 +335,51 @@ public final class Actions {
 			}
 		}
 		return null;
+	}
+
+	private static final Map<String, String> ESPECES = Map.ofEntries(Map.entry("vache", "cow"), Map.entry("mouton", "sheep"), Map.entry("cochon", "pig"), Map.entry("porc", "pig"),
+			Map.entry("poule", "chicken"), Map.entry("poulet", "chicken"), Map.entry("lapin", "rabbit"), Map.entry("cheval", "horse"), Map.entry("loup", "wolf"), Map.entry("renard", "fox"),
+			Map.entry("chevre", "goat"), Map.entry("squelette", "skeleton"), Map.entry("araignee", "spider"), Map.entry("sorciere", "witch"), Map.entry("pillard", "pillager"), Map.entry("noye", "drowned"));
+
+	/** La bête ou le monstre le plus proche de cette espèce (« vache », « Cow », « zombie »…). */
+	private static Entity bete(final Villager villageois, final ServerLevel level, final String espece) {
+		if (espece == null) {
+			return null;
+		}
+		String cherche = Ames.simplifier(espece).replaceAll("^(un|une|le|la|les|des|ce|cette) ", "").replaceAll("s$", "");
+		String id = ESPECES.getOrDefault(cherche, cherche).replace(' ', '_');
+		Entity proche = null;
+		for (LivingEntity candidat : level.getEntitiesOfClass(LivingEntity.class, villageois.getBoundingBox().inflate(24),
+				e -> e.isAlive() && !(e instanceof Villager) && !(e instanceof ServerPlayer) && !(e instanceof net.minecraft.world.entity.decoration.Mannequin))) {
+			String chemin = BuiltInRegistries.ENTITY_TYPE.getKey(candidat.getType()).getPath();
+			if ((chemin.equals(id) || Ames.simplifier(candidat.getType().getDescription().getString()).equals(cherche)) && (proche == null || villageois.distanceToSqr(candidat) < villageois.distanceToSqr(proche))) {
+				proche = candidat;
+			}
+		}
+		return proche;
+	}
+
+	private static final Map<String, String> MINERAIS = Map.ofEntries(Map.entry("charbon", "coal_ore"), Map.entry("fer", "iron_ore"), Map.entry("cuivre", "copper_ore"), Map.entry("or", "gold_ore"),
+			Map.entry("diamant", "diamond_ore"), Map.entry("emeraude", "emerald_ore"), Map.entry("redstone", "redstone_ore"), Map.entry("lapis", "lapis_ore"), Map.entry("sable", "sand"),
+			Map.entry("gravier", "gravel"), Map.entry("argile", "clay"), Map.entry("coal", "coal_ore"), Map.entry("iron", "iron_ore"), Map.entry("copper", "copper_ore"), Map.entry("gold", "gold_ore"),
+			Map.entry("diamond", "diamond_ore"), Map.entry("emerald", "emerald_ore"));
+
+	/** Comprend ce que le villageois veut extraire, règle le filtre du geste et renvoie le nom à lui redire. */
+	private static String ressource(final String demande, final Geste geste) {
+		for (String mot : Ames.simplifier(demande).split("[^a-z_]+")) {
+			String sans = mot.replaceAll("s$", "");
+			if (sans.matches("pierre|roche|caillou|stone|cobblestone")) {
+				geste.ressource = etat -> etat.is(net.minecraft.tags.BlockTags.BASE_STONE_OVERWORLD);
+				return "pierre";
+			}
+			String cle = MINERAIS.getOrDefault(sans, sans.endsWith("_ore") || BuiltInRegistries.BLOCK.containsKey(net.minecraft.resources.Identifier.withDefaultNamespace(sans)) ? sans : null);
+			if (cle != null && sans.length() > 1) {
+				geste.ressource = etat -> BuiltInRegistries.BLOCK.getKey(etat.getBlock()).getPath().endsWith(cle);
+				return sans;
+			}
+		}
+		geste.ressource = etat -> BuiltInRegistries.BLOCK.getKey(etat.getBlock()).getPath().endsWith("_ore");
+		return "minerai";
 	}
 
 	private static final java.util.regex.Pattern TROIS_NOMBRES = java.util.regex.Pattern.compile("(-?\\d+)[ ,;]+(-?\\d+)[ ,;]+(-?\\d+)");
@@ -404,6 +502,15 @@ public final class Actions {
 				}
 				return perime;
 			}
+			case "miner" -> {
+				return miner(villageois, ame, geste, level, maintenant, perime);
+			}
+			case "recolter" -> {
+				return recolter(villageois, ame, geste, level, perime);
+			}
+			case "ramasser" -> {
+				return ramasser(villageois, ame, geste, level, perime);
+			}
 			case "aller" -> {
 				Vec3 but = geste.cible != null ? geste.cible.position() : Vec3.atBottomCenterOf(geste.pos);
 				if (villageois.position().closerThan(but, 2.5)) {
@@ -472,13 +579,28 @@ public final class Actions {
 					HameauConfig.Autonomie autonomie = HameauConfig.get().autonomie;
 					villageois.getLookControl().setLookAt(geste.cible);
 					Corps.balancer(villageois);
-					if (!geste.cible.hurtServer(level, level.damageSources().mobAttack(villageois), autonomie.degatsParCoup)) {
+					boolean gibier = !(geste.cible instanceof Villager) && !(geste.cible instanceof ServerPlayer);
+					if (gibier) {
+						Corps.tenir(villageois, new ItemStack(net.minecraft.world.item.Items.IRON_AXE));
+					}
+					if (!geste.cible.hurtServer(level, level.damageSources().mobAttack(villageois), gibier ? Math.max(4F, autonomie.degatsParCoup) : autonomie.degatsParCoup)) {
 						ame.noter("Tu as frappé " + nomCible + " mais tes coups ne lui font rien du tout : inutile d'insister.");
 						return true;
 					}
 					geste.coups++;
 					geste.prochainCoup = maintenant + 20;
-					if (geste.coups >= autonomie.coupsMax) {
+					if (gibier && !geste.cible.isAlive()) {
+						// Ce que la bête laisse va dans ses poches.
+						java.util.List<String> butin = new java.util.ArrayList<>();
+						for (net.minecraft.world.entity.item.ItemEntity tombe : level.getEntitiesOfClass(net.minecraft.world.entity.item.ItemEntity.class, geste.cible.getBoundingBox().inflate(2.5), Entity::isAlive)) {
+							butin.add(Perception.objet(tombe.getItem()));
+							empocher(villageois, level, tombe);
+						}
+						ame.noter("Tu as tué : " + nomCible + (butin.isEmpty() ? "." : " et ramassé " + String.join(", ", butin) + "."));
+						Vie.temoins(villageois, null, "Tu as vu " + ame.nom + " tuer : " + nomCible + ".", false);
+						return true;
+					}
+					if (geste.coups >= (gibier ? 15 : autonomie.coupsMax)) {
 						ame.noter("Tu as frappé " + nomCible + " (" + geste.coups + " coups).");
 						return true;
 					}
@@ -767,6 +889,35 @@ public final class Actions {
 				ame.noter("Tu as posé : " + bloc.getBlock().getName().getString() + " en " + ou + ".");
 				Vie.temoins(villageois, null, "Tu as vu " + ame.nom + " poser un bloc en " + ou + ".", false);
 			}
+			case "deposer" -> {
+				if (!(level.getBlockEntity(pos) instanceof Container coffre)) {
+					ame.noter("Il n'y a pas de coffre en " + ou + ".");
+					return;
+				}
+				String voulu = geste.objet == null ? "" : TROIS_NOMBRES.matcher(geste.objet).replaceAll("").trim();
+				java.util.List<String> ranges = new java.util.ArrayList<>();
+				for (int tour = 0; tour < 8; tour++) {
+					ItemStack pile = retirer(villageois.getInventory(), voulu, false);
+					if (pile.isEmpty()) {
+						break;
+					}
+					String quoi = Perception.objet(pile);
+					int avant = pile.getCount();
+					ItemStack reste = net.minecraft.world.level.block.entity.HopperBlockEntity.addItem(null, coffre, pile, null);
+					if (!reste.isEmpty()) {
+						villageois.getInventory().addItem(reste);
+						if (reste.getCount() == avant) {
+							break;
+						}
+					}
+					ranges.add(quoi);
+				}
+				coffre.setChanged();
+				ame.noter(ranges.isEmpty() ? "Tu n'avais rien à ranger dans le coffre en " + ou + " (ou il est plein)." : "Tu as rangé " + String.join(", ", ranges) + " dans : " + nomBloc + " en " + ou + ".");
+				if (!ranges.isEmpty()) {
+					Vie.temoins(villageois, null, "Tu as vu " + ame.nom + " ranger " + String.join(", ", ranges) + " dans un coffre en " + ou + ".", false);
+				}
+			}
 			default -> {
 				if (!(level.getBlockEntity(pos) instanceof Container coffre)) {
 					ame.noter("Il n'y a pas de coffre en " + ou + ".");
@@ -787,6 +938,265 @@ public final class Actions {
 				ame.noter("Le coffre en " + ou + " ne contient rien que tu puisses emporter.");
 			}
 		}
+	}
+
+	private static void empocher(final Villager villageois, final ServerLevel level, final net.minecraft.world.entity.item.ItemEntity tombe) {
+		ItemStack reste = villageois.getInventory().addItem(tombe.getItem().copy());
+		if (reste.isEmpty()) {
+			tombe.discard();
+		} else {
+			tombe.setItem(reste);
+		}
+	}
+
+	private static void empocher(final Villager villageois, final ServerLevel level, final BlockState etat, final BlockPos pos, final net.minecraft.world.item.Item outil) {
+		for (ItemStack butin : net.minecraft.world.level.block.Block.getDrops(etat, level, pos, null, villageois, new ItemStack(outil))) {
+			ItemStack reste = villageois.getInventory().addItem(butin);
+			if (!reste.isEmpty()) {
+				villageois.spawnAtLocation(level, reste);
+			}
+		}
+	}
+
+	/** Celui qui sert quelqu'un reste dans ses pas tant qu'il n'a rien d'autre à faire. */
+	static void escorter(final Villager villageois, final Ame ame) {
+		if (ame.maitre == null || !ame.suit || GESTES.containsKey(villageois.getUUID()) || ECOUTES.containsKey(villageois.getUUID()) || villageois.isSleeping()) {
+			return;
+		}
+		Entity maitre = personne(villageois, (ServerLevel) villageois.level(), ame.maitre);
+		if (maitre != null && villageois.distanceTo(maitre) > 4) {
+			marcher(villageois, maitre.position(), villageois.distanceTo(maitre) > 10 ? COURSE : PAS, 2);
+		}
+	}
+
+	private static void manger(final Villager villageois, final Ame ame) {
+		SimpleContainer poches = villageois.getInventory();
+		for (int i = 0; i < poches.getContainerSize(); i++) {
+			ItemStack pile = poches.getItem(i);
+			if (!pile.isEmpty() && pile.has(net.minecraft.core.component.DataComponents.FOOD)) {
+				String quoi = pile.getHoverName().getString();
+				Corps.balancer(villageois);
+				poches.removeItem(i, 1);
+				villageois.heal(4);
+				villageois.level().playSound(null, villageois.blockPosition(), net.minecraft.sounds.SoundEvents.GENERIC_EAT.value(), net.minecraft.sounds.SoundSource.NEUTRAL, 0.8F, 1F);
+				ame.noter("Tu as mangé : " + quoi + ".");
+				return;
+			}
+		}
+		ame.noter("Tu voulais manger mais tu n'as rien de comestible en poche.");
+	}
+
+	/** Ramasse un à un les objets tombés à terre aux alentours. */
+	private static boolean ramasser(final Villager villageois, final Ame ame, final Geste geste, final ServerLevel level, final boolean perime) {
+		net.minecraft.world.entity.item.ItemEntity proche = null;
+		for (net.minecraft.world.entity.item.ItemEntity tombe : level.getEntitiesOfClass(net.minecraft.world.entity.item.ItemEntity.class, villageois.getBoundingBox().inflate(10, 4, 10),
+				e -> e.isAlive() && villageois.getInventory().canAddItem(e.getItem()))) {
+			if (proche == null || villageois.distanceToSqr(tombe) < villageois.distanceToSqr(proche)) {
+				proche = tombe;
+			}
+		}
+		if (proche == null || perime || geste.blocsFaits >= 12) {
+			ame.noter(geste.blocsFaits == 0 ? "Il n'y avait rien à ramasser par terre (ou tes poches sont pleines)." : "Tu as ramassé ce qui traînait : " + geste.objet + ".");
+			return true;
+		}
+		if (villageois.distanceTo(proche) > 2) {
+			marcher(villageois, proche.position(), PAS, 1);
+			return false;
+		}
+		String quoi = Perception.objet(proche.getItem());
+		geste.objet = geste.blocsFaits == 0 ? quoi : geste.objet + ", " + quoi;
+		geste.blocsFaits++;
+		Corps.accroupir(villageois, 6);
+		empocher(villageois, level, proche);
+		return false;
+	}
+
+	/** Moissonne les cultures mûres des alentours et ressème derrière lui. */
+	private static boolean recolter(final Villager villageois, final Ame ame, final Geste geste, final ServerLevel level, final boolean perime) {
+		if (geste.pos == null || !(level.getBlockState(geste.pos).getBlock() instanceof net.minecraft.world.level.block.CropBlock culture) || !culture.isMaxAge(level.getBlockState(geste.pos))) {
+			geste.pos = null;
+			BlockPos centre = villageois.blockPosition();
+			for (BlockPos pos : BlockPos.betweenClosed(centre.offset(-9, -2, -9), centre.offset(9, 2, 9))) {
+				BlockState etat = level.getBlockState(pos);
+				if (etat.getBlock() instanceof net.minecraft.world.level.block.CropBlock champ && champ.isMaxAge(etat) && (geste.pos == null || pos.distSqr(centre) < geste.pos.distSqr(centre))) {
+					geste.pos = pos.immutable();
+				}
+			}
+		}
+		if (geste.pos == null || perime || geste.blocsFaits >= 24) {
+			ame.noter(geste.blocsFaits == 0 ? "Il n'y a aucune culture mûre à récolter par ici." : "Tu as moissonné " + geste.blocsFaits + " plants et ressemé derrière toi ; la récolte est dans tes poches.");
+			if (geste.blocsFaits > 0) {
+				Vie.temoins(villageois, null, "Tu as vu " + ame.nom + " faire la moisson.", false);
+			}
+			return true;
+		}
+		if (!villageois.position().closerThan(Vec3.atCenterOf(geste.pos), 2.5)) {
+			marcher(villageois, Vec3.atCenterOf(geste.pos), PAS, 1);
+			return false;
+		}
+		BlockState etat = level.getBlockState(geste.pos);
+		villageois.getLookControl().setLookAt(Vec3.atCenterOf(geste.pos));
+		Corps.tenir(villageois, new ItemStack(net.minecraft.world.item.Items.IRON_HOE));
+		Corps.balancer(villageois);
+		empocher(villageois, level, etat, geste.pos, net.minecraft.world.item.Items.IRON_HOE);
+		level.playSound(null, geste.pos, etat.getSoundType().getBreakSound(), net.minecraft.sounds.SoundSource.BLOCKS, 0.8F, 1F);
+		level.setBlockAndUpdate(geste.pos, etat.getBlock().defaultBlockState());
+		geste.blocsFaits++;
+		geste.pos = null;
+		return false;
+	}
+
+	private static BlockPos filon(final ServerLevel level, final BlockPos centre, final java.util.function.Predicate<BlockState> ressource, final int rayon, final int dessous) {
+		BlockPos proche = null;
+		for (BlockPos pos : BlockPos.betweenClosed(centre.offset(-rayon, -dessous, -rayon), centre.offset(rayon, 8, rayon))) {
+			if (pos.getY() > level.getMinY() + 4 && ressource.test(level.getBlockState(pos)) && (proche == null || pos.distSqr(centre) < proche.distSqr(centre))) {
+				proche = pos.immutable();
+			}
+		}
+		return proche;
+	}
+
+	private static boolean lave(final ServerLevel level, final BlockPos pos) {
+		for (net.minecraft.core.Direction cote : net.minecraft.core.Direction.values()) {
+			if (level.getFluidState(pos.relative(cote)).is(net.minecraft.tags.FluidTags.LAVA)) {
+				return true;
+			}
+		}
+		return level.getFluidState(pos).is(net.minecraft.tags.FluidTags.LAVA);
+	}
+
+	private static boolean finMine(final Villager villageois, final Ame ame, final Geste geste, final ServerLevel level, final String raison) {
+		if (geste.duree > 0 && geste.pos != null) {
+			level.destroyBlockProgress(villageois.getId(), geste.pos, -1);
+		}
+		String bilan = geste.blocsFaits > 0 ? "Tu as extrait " + geste.blocsFaits + " blocs de " + geste.nomRessource + " : c'est dans tes poches." : "Tu n'as rien extrait.";
+		ame.noter("Mine : " + raison + " " + bilan + (geste.galerie > 3 ? " Ta galerie s'arrête en " + Perception.coord(villageois.blockPosition()) + "." : ""));
+		if (geste.blocsFaits > 0) {
+			Vie.temoins(villageois, null, "Tu as vu " + ame.nom + " revenir de la mine avec " + geste.blocsFaits + " blocs de " + geste.nomRessource + ".", false);
+		}
+		return true;
+	}
+
+	/**
+	 * Va au filon le plus proche en creusant sa galerie : un escalier quand il faut descendre ou monter, une torche de loin en loin,
+	 * un pont de pierre au-dessus du vide, et demi-tour devant la lave.
+	 */
+	private static boolean miner(final Villager villageois, final Ame ame, final Geste geste, final ServerLevel level, final long maintenant, final boolean perime) {
+		if (perime) {
+			return finMine(villageois, ame, geste, level, "le temps a passé, tu arrêtes là.");
+		}
+		// 1. Le bloc en cours de casse.
+		if (geste.pos != null) {
+			BlockState etat = level.getBlockState(geste.pos);
+			if (etat.isAir() || (!geste.surFilon && etat.canBeReplaced() && etat.getFluidState().isEmpty())) {
+				if (!etat.isAir()) {
+					level.destroyBlock(geste.pos, false, villageois, 512);
+				}
+				geste.pos = null;
+				geste.duree = 0;
+				return false;
+			}
+			if (etat.getDestroySpeed(level, geste.pos) < 0 || etat.hasBlockEntity() || !etat.getFluidState().isEmpty() || lave(level, geste.pos)) {
+				return finMine(villageois, ame, geste, level, etat.getFluidState().isEmpty() && !lave(level, geste.pos) ? "quelque chose d'incassable barre le passage." : "de l'eau ou de la lave barre le passage, tu renonces par prudence.");
+			}
+			if (geste.duree == 0) {
+				geste.duree = Math.clamp((long) (etat.getDestroySpeed(level, geste.pos) * 14), 8, 48);
+				geste.avancement = 0;
+				Corps.tenir(villageois, new ItemStack(outilPour(etat) == net.minecraft.world.item.Items.AIR ? net.minecraft.world.item.Items.IRON_PICKAXE : outilPour(etat)));
+			}
+			villageois.getBrain().eraseMemory(MemoryModuleType.WALK_TARGET);
+			villageois.getNavigation().stop();
+			villageois.getLookControl().setLookAt(Vec3.atCenterOf(geste.pos));
+			geste.avancement += 4;
+			Corps.balancer(villageois);
+			level.playSound(null, geste.pos, etat.getSoundType().getHitSound(), net.minecraft.sounds.SoundSource.BLOCKS, 0.6F, 0.8F);
+			level.destroyBlockProgress(villageois.getId(), geste.pos, Math.min(9, geste.avancement * 10 / geste.duree));
+			if (geste.avancement < geste.duree) {
+				return false;
+			}
+			level.destroyBlockProgress(villageois.getId(), geste.pos, -1);
+			if (geste.surFilon) {
+				empocher(villageois, level, etat, geste.pos, net.minecraft.world.item.Items.IRON_PICKAXE);
+				geste.blocsFaits++;
+			}
+			level.destroyBlock(geste.pos, false, villageois, 512);
+			geste.pos = null;
+			geste.duree = 0;
+			geste.surFilon = false;
+			return false;
+		}
+		// 2. Les blocs à dégager pour le pas suivant.
+		if (!geste.aDegager.isEmpty()) {
+			geste.pos = geste.aDegager.poll();
+			return false;
+		}
+		// 3. Avancer dans la case dégagée.
+		if (geste.pas != null) {
+			if (villageois.blockPosition().closerThan(geste.pas, 1.2)) {
+				geste.pas = null;
+			} else if (maintenant > geste.delaiPas) {
+				villageois.teleportTo(geste.pas.getX() + 0.5, geste.pas.getY(), geste.pas.getZ() + 0.5);
+				villageois.getNavigation().stop();
+				geste.pas = null;
+			} else {
+				// Dans une galerie le chemin est tout tracé : on le fait avancer droit devant, sans attendre que son cerveau de villageois s'y décide.
+				villageois.getBrain().eraseMemory(MemoryModuleType.WALK_TARGET);
+				villageois.getMoveControl().setWantedPosition(geste.pas.getX() + 0.5, geste.pas.getY(), geste.pas.getZ() + 0.5, 0.6);
+				return false;
+			}
+		}
+		if (geste.blocsFaits >= geste.objectif) {
+			return finMine(villageois, ame, geste, level, "tu as ce que tu voulais.");
+		}
+		if (geste.galerie >= 90) {
+			return finMine(villageois, ame, geste, level, "la galerie est déjà bien longue, tu t'arrêtes.");
+		}
+		// 4. Le filon : celui qu'on visait s'il est toujours là, sinon le plus proche.
+		BlockPos ici = villageois.blockPosition();
+		if (geste.filon == null || !geste.ressource.test(level.getBlockState(geste.filon))) {
+			geste.filon = filon(level, ici, geste.ressource, 10, 12);
+			if (geste.filon == null) {
+				geste.filon = filon(level, ici, geste.ressource, 24, 40);
+			}
+			if (geste.filon == null) {
+				return finMine(villageois, ame, geste, level, "pas de " + geste.nomRessource + " à moins de 24 blocs d'ici, même en profondeur.");
+			}
+		}
+		BlockPos filon = geste.filon;
+		int dx = filon.getX() - ici.getX();
+		int dy = filon.getY() - ici.getY();
+		int dz = filon.getZ() - ici.getZ();
+		if (Math.abs(dx) + Math.abs(dz) <= 3 && Math.abs(dx) <= 2 && Math.abs(dz) <= 2 && dy >= -1 && dy <= 2) {
+			geste.pos = filon;
+			geste.surFilon = true;
+			return false;
+		}
+		// 5. Un pas de galerie vers le filon : en escalier s'il est plus bas ou plus haut.
+		net.minecraft.core.Direction cap = Math.abs(dx) >= Math.abs(dz) ? (dx >= 0 ? net.minecraft.core.Direction.EAST : net.minecraft.core.Direction.WEST) : (dz >= 0 ? net.minecraft.core.Direction.SOUTH : net.minecraft.core.Direction.NORTH);
+		int pente = dy > 1 ? 1 : dy < -1 ? -1 : 0;
+		BlockPos suivant = ici.relative(cap).above(pente);
+		if (lave(level, suivant) || lave(level, suivant.above())) {
+			return finMine(villageois, ame, geste, level, "de la lave juste devant, tu renonces par prudence.");
+		}
+		BlockPos appui = suivant.below();
+		if (!level.getBlockState(appui).isSolid()) {
+			if (!level.getFluidState(appui).isEmpty()) {
+				return finMine(villageois, ame, geste, level, "de l'eau barre le passage.");
+			}
+			level.setBlockAndUpdate(appui, net.minecraft.world.level.block.Blocks.COBBLESTONE.defaultBlockState());
+		}
+		geste.aDegager.add(suivant.above());
+		geste.aDegager.add(suivant);
+		if (pente != 0) {
+			geste.aDegager.add(pente < 0 ? suivant.above(2) : ici.above(2));
+		}
+		geste.pas = suivant;
+		geste.delaiPas = maintenant + 50;
+		geste.galerie++;
+		if (geste.galerie % 7 == 0 && level.getBlockState(ici).isAir() && level.getBlockState(ici.below()).isSolid() && level.getMaxLocalRawBrightness(ici) < 8) {
+			level.setBlockAndUpdate(ici, net.minecraft.world.level.block.Blocks.TORCH.defaultBlockState());
+		}
+		return false;
 	}
 
 	/** Retire un objet de l'inventaire d'après le nom donné par Claude (nom affiché ou identifiant, approximatif). */

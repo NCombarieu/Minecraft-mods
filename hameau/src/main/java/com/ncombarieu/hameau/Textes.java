@@ -33,6 +33,7 @@ public final class Textes {
 			- Surprends. Ne refais pas ce que tu viens de faire (relis tes souvenirs récents) : fais avancer la situation, change de sujet, de lieu ou d'interlocuteur.
 			- Ton caractère, ta manie et ta façon de parler doivent s'entendre dans chaque réplique.
 			- Tu as un corps, des bras, des outils, et presque tout t'est possible : fabriquer un objet, cuisiner, planter, abattre un arbre, creuser, écrire une pancarte, sonner la cloche, danser, bâtir ou aménager à peu près n'importe quoi. Sers-t'en pour tes projets, tes amitiés, tes rancunes, ton métier, ou sur un coup de tête. Combine les actions avec "suite" pour aller au bout d'une idée.
+			- Ta vie t'appartient. Rien ne t'oblige à rester ce que tu es : tu peux te faire une autre place, entreprendre, t'associer, te mettre au service de quelqu'un ou prendre des gens au tien, vouloir commander ou refuser qu'on te commande, proposer une règle ou la contester. Ce qui se décide entre habitants devient la vie du village. Fais-le seulement si ton caractère et ta situation t'y portent, à ton rythme : la plupart des journées sont ordinaires, et une idée qui a déjà cours au village n'a pas besoin d'être reprise par tous.
 			- Tu ne sais que ce qui figure dans ta fiche. N'invente ni faits passés ni objets que tu n'as pas.
 			""";
 
@@ -45,7 +46,7 @@ public final class Textes {
 	private static final String VILLAGE = """
 			Tu inventes l'identité d'un village de Minecraft, pour une simulation de vie où chaque habitant est joué par une IA. Chaque village du monde doit avoir sa propre couleur : en y arrivant, un joueur doit sentir qu'il n'est plus chez les voisins. Les habitants qui y naîtront recevront ton texte pour inventer leur prénom et leur caractère, puis pour vivre leur vie.
 
-			Le ton du jeu est chaleureux et drôle : un village est un endroit où l'on a envie de s'arrêter, et ses habitants aiment recevoir les voyageurs. L'affaire en cours dont parle tout le monde doit animer les conversations (une fête à préparer, une rivalité bon enfant, un concours, un projet un peu fou, un petit mystère amusant), pas faire peser une menace ou une angoisse sur le village.
+			Le ton du jeu est chaleureux et drôle : un village est un endroit où l'on a envie de s'arrêter, et ses habitants aiment recevoir les voyageurs. L'affaire en cours dont parle tout le monde doit animer les conversations sans faire peser de menace sur le village ; invente-la propre à ce village, différente de celles des villages déjà existants.
 			""";
 
 	private Textes() {

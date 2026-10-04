@@ -107,6 +107,17 @@ public final class Perception {
 		if (!ame.liens.isEmpty()) {
 			f.append("Tes liens : ").append(String.join(" ", ame.liens)).append("\n");
 		}
+		if (ame.role != null) {
+			f.append("Ta place au village (celle que tu t'es faite) : ").append(ame.role).append(".\n");
+		}
+		if (ame.maitre != null) {
+			f.append("Tu es au service de ").append(ame.maitre).append(" : ce qu'il te demande, tu le fais tout de suite, par l'action qui convient, sans discuter ni marchander (râler reste permis, selon ton caractère). ")
+					.append(ame.suit ? "Tu le suis partout ; l'action \"rester\" te fait l'attendre sur place." : "Il t'a dit d'attendre ici ; l'action \"suivre\" te remet dans ses pas.").append("\n");
+		}
+		if (village != null && !ame.etranger && !village.chronique.isEmpty()) {
+			f.append("Ce que tout le village sait :\n");
+			village.chronique.forEach(fait -> f.append("- ").append(fait).append("\n"));
+		}
 		String activite = Actions.activite(villageois.getUUID());
 		if (activite != null) {
 			f.append("En ce moment tu es en train de : ").append(activite).append(". (\"rien\" pour continuer, \"arreter\" pour abandonner.)\n");
@@ -148,13 +159,15 @@ public final class Perception {
 			String nom = nom(proche);
 			f.append("- ").append(nom);
 			if (proche instanceof ServerPlayer joueur) {
-				f.append(ame.relations.containsKey(nom) ? " (voyageur" : " (voyageur que tu ne connais pas encore");
+				f.append(nom.equals(ame.maitre) ? " (ton maître" : ame.relations.containsKey(nom) ? " (voyageur" : " (voyageur que tu ne connais pas encore");
 				if (!joueur.getMainHandItem().isEmpty()) {
 					f.append(", tient : ").append(objet(joueur.getMainHandItem()));
 				}
 				f.append(")");
 			} else if (proche instanceof Villager autre) {
-				f.append(" (").append(metier(autre)).append(autre.isSleeping() ? ", dort" : "").append(")");
+				Ame voisine = Ames.de(autre);
+				f.append(" (").append(metier(autre)).append(voisine.role != null ? " ; " + voisine.role : "").append(ame.nom.equals(voisine.maitre) ? " ; à ton service" : voisine.maitre != null ? " ; au service de " + voisine.maitre : "")
+						.append(autre.isSleeping() ? ", dort" : "").append(")");
 			} else {
 				f.append(" (monstre)");
 			}
@@ -166,6 +179,16 @@ public final class Perception {
 		}
 		if (proches.isEmpty()) {
 			f.append("- personne\n");
+		}
+
+		Map<String, Integer> betes = new java.util.TreeMap<>();
+		for (net.minecraft.world.entity.animal.Animal bete : level.getEntitiesOfClass(net.minecraft.world.entity.animal.Animal.class, villageois.getBoundingBox().inflate(VUE), Entity::isAlive)) {
+			betes.merge(bete.getType().getDescription().getString(), 1, Integer::sum);
+		}
+		if (!betes.isEmpty()) {
+			List<String> especes = new ArrayList<>();
+			betes.forEach((espece, nombre) -> especes.add(espece + (nombre > 1 ? " x" + nombre : "")));
+			f.append("Bêtes aux alentours : ").append(String.join(", ", especes)).append(".\n");
 		}
 
 		List<String> lieux = new ArrayList<>();

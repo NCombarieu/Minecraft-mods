@@ -38,7 +38,8 @@ public final class Cerveau {
 	}
 
 	public record Decision(String pensee, String geste, String parole, String a, boolean prive, String action, String cible, String objet,
-			java.util.List<Etape> suite, String emotion, String humeur, String projet, Map<String, Integer> relations, String souvenir, long tokensEntree, long tokensSortie) {
+			java.util.List<Etape> suite, String emotion, String humeur, String projet, Map<String, Integer> relations, String souvenir, String role, String annonce, String sert,
+			long tokensEntree, long tokensSortie) {
 	}
 
 	/** Plan de construction : une palette de blocs et des couches empilées, de bas en haut. */
@@ -93,6 +94,11 @@ public final class Cerveau {
 				Réponds UNIQUEMENT par un objet JSON, sans rien autour :
 				{"pensee":"ce que tu te dis, une phrase","geste":"ce qu'on te voit faire, à la 3e personne, très court, ex. « hausse les épaules en riant »","parole":"ce que tu dis, ou null","a":"à qui tu parles, ou null","prive":false,"action":"...","cible":"...","objet":"...","suite":[],"emotion":"joie|colere|amour|tristesse|peur|rire|surprise|neutre","humeur":"un ou deux mots","projet":"ce que tu comptes faire dans les heures qui viennent","relations":{"Nom":entier de -15 à 15},"souvenir":"fait important à retenir longtemps, ou null"}
 
+				Trois champs facultatifs, à n'ajouter que le jour où cela arrive vraiment (la plupart du temps, aucun) :
+				"role":"…" quand ta place au village change : le métier que tu t'inventes, la fonction ou le titre que tu prends ou qu'on te donne, en quelques mots. Les autres le verront.
+				"annonce":"…" pour un fait public et durable que tout le village doit désormais savoir (ce qui se décide, s'établit ou change pour tous), en une phrase. Il entre dans la mémoire commune du village.
+				"sert":"Nom" quand tu acceptes d'entrer au service de quelqu'un qui t'a convaincu, payé ou soumis ; "sert":"personne" quand tu reprends ta liberté.
+
 				"prive" : true si tu chuchotes ; seul ton interlocuteur entend alors.
 				"suite" : pour mener une tâche jusqu'au bout, la liste des actions suivantes, enchaînées sans que tu aies à y repenser, 5 au plus, ex. [{"action":"couper","cible":"3 64 9"},{"action":"aller","cible":"place"},{"action":"donner","cible":"Odile","objet":"bûche"}]. Sinon [].
 				Actions possibles :
@@ -103,14 +109,19 @@ public final class Cerveau {
 				- "fuir" : t'éloigner de quelqu'un. cible = nom.
 				- "donner" : offrir un objet de ton inventaire. cible = nom, objet = nom de l'objet.
 				- "fabriquer" : confectionner de tes mains un objet courant (nourriture, outil, fleur, meuble, vêtement, graines, jouet…) qui va dans ton inventaire. objet = identifiant Minecraft en anglais, ex. "cake", "bread", "oak_sign", "torch", "wheat_seeds", "3 cookie".
-				- "danser" : danser, sauter de joie, faire la fête.
+				- "danser" : danser, sauter de joie.
+				- "manger" : manger quelque chose que tu as en poche ; cela te soigne.
+				- "ramasser" : ramasser les objets tombés à terre près de toi.
+				- "recolter" : moissonner les cultures mûres autour de toi et ressemer.
+				- "deposer" : ranger dans un coffre ce que tu portes. cible = "x y z", objet = quoi (rien = tout).
 				""");
 		if (autonomie.frapper) {
-			s.append("- \"frapper\" : donner des coups à quelqu'un. Normal pour riposter quand on te frappe, pour relever un défi ou une bagarre qu'on te propose, ou quand la colère déborde ; selon ton caractère tu cognes volontiers ou tu t'y refuses. Les témoins s'en souviendront. cible = nom.\n");
+			s.append("- \"frapper\" : donner des coups à quelqu'un. Normal pour riposter quand on te frappe, pour relever un défi ou une bagarre qu'on te propose, ou quand la colère déborde ; selon ton caractère tu cognes volontiers ou tu t'y refuses. Les témoins s'en souviendront. cible = nom. Sert aussi à chasser une bête ou à tuer un monstre (cible = son espèce) : tu ramasses ce qu'elle laisse.\n");
 		}
 		if (autonomie.casser) {
 			s.append("- \"couper\" : abattre un arbre à la hache ; le bois va dans ton inventaire. cible = \"x y z\" du pied du tronc.\n");
 			s.append("- \"casser\" : casser ou creuser un bloc avec l'outil qui convient (pioche, pelle, hache, main) ; tu ramasses ce qu'il donne. cible = \"x y z\".\n");
+			s.append("- \"miner\" : aller chercher un minerai ou de la pierre sous terre, à la pioche : tu creuses ta galerie jusqu'au filon le plus proche et tu remontes avec. cible = ce que tu cherches (fer, charbon, pierre, diamant…), objet = combien de blocs (6 par défaut).\n");
 			s.append("- \"labourer\" : retourner un bloc de terre à la houe pour le cultiver. cible = \"x y z\".\n");
 		}
 		if (autonomie.poser) {
@@ -330,6 +341,9 @@ public final class Cerveau {
 		String geste = null;
 		String emotion = null;
 		String projet = null;
+		String role = null;
+		String annonce = null;
+		String sert = null;
 		boolean prive = false;
 		java.util.List<Etape> suite = new java.util.ArrayList<>();
 		Map<String, Integer> relations = new LinkedHashMap<>();
@@ -347,6 +361,9 @@ public final class Cerveau {
 			geste = chaine(json, "geste");
 			emotion = chaine(json, "emotion");
 			projet = chaine(json, "projet");
+			role = chaine(json, "role");
+			annonce = chaine(json, "annonce");
+			sert = chaine(json, "sert");
 			prive = "true".equalsIgnoreCase(chaine(json, "prive"));
 			if (json.has("suite") && json.get("suite").isJsonArray()) {
 				for (JsonElement e : json.getAsJsonArray("suite")) {
@@ -366,7 +383,7 @@ public final class Cerveau {
 		} catch (RuntimeException e) {
 			Hameau.LOGGER.warn("Hameau : réponse illisible ({}) : {}", e.getMessage(), texte);
 		}
-		return new Decision(pensee, geste, parole, a, prive, action, cible, objet, suite, emotion, humeur, projet, relations, souvenir, entree, sortie);
+		return new Decision(pensee, geste, parole, a, prive, action, cible, objet, suite, emotion, humeur, projet, relations, souvenir, role, annonce, sert, entree, sortie);
 	}
 
 	/** Extrait l'objet JSON ; si la réponse a été coupée, on la referme au dernier champ complet. */

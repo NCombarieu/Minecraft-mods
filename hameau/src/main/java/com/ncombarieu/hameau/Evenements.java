@@ -172,7 +172,9 @@ public final class Evenements {
 			return;
 		}
 		ServerLevel level = joueur.level();
-		List<Villager> proches = level.getEntitiesOfClass(Villager.class, joueur.getBoundingBox().inflate(10), Entity::isAlive);
+		String maitre = joueur.getName().getString();
+		List<Villager> proches = level.getEntitiesOfClass(Villager.class, joueur.getBoundingBox().inflate(24),
+				v -> v.isAlive() && (v.distanceTo(joueur) <= 10 || maitre.equals(Ames.de(v).maitre)));
 		if (proches.isEmpty()) {
 			return;
 		}
@@ -198,6 +200,15 @@ public final class Evenements {
 		}
 		if (vise == null && joueur.distanceTo(proches.getFirst()) <= 6) {
 			vise = proches.getFirst();
+		}
+		if (vise == null) {
+			// Personne tout près : un ordre lancé à la cantonade s'adresse à celui qui le sert.
+			for (Villager villageois : proches) {
+				if (maitre.equals(Ames.de(villageois).maitre)) {
+					vise = villageois;
+					break;
+				}
+			}
 		}
 		String nomJoueur = joueur.getName().getString();
 		String nomVise = vise != null ? Ames.de(vise).nom : null;
