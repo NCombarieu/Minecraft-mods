@@ -114,7 +114,7 @@ public final class Chantiers {
 	}
 
 	/** Transforme le plan en liste de blocs à poser : du bas vers le haut, les éléments fragiles (portes, torches) en dernier. */
-	static final int RAYON_TERRAIN = 24;
+	static final int RAYON_TERRAIN = 32;
 
 	/** Le niveau du sol dans cette colonne, sous les arbres et les herbes. */
 	private static int sol(final ServerLevel level, final int x, final int z) {
@@ -148,6 +148,8 @@ public final class Chantiers {
 		}
 		decalages.sort(java.util.Comparator.comparingInt(d -> d[0] * d[0] + d[1] * d[1]));
 		BlockPos passable = null;
+		// Une grande bâtisse s'accommode d'un peu plus de pente : ses fondations la rattrapent.
+		int penteMax = Math.max(largeur, profondeur) >= 11 ? 6 : 4;
 		for (int[] decalage : decalages) {
 			int ox = centre.getX() + decalage[0] - largeur / 2;
 			int oz = centre.getZ() + decalage[1] - profondeur / 2;
@@ -163,7 +165,7 @@ public final class Chantiers {
 					int y = sol(level, ox + i, oz + l);
 					bas = Math.min(bas, y);
 					haut = Math.max(haut, y);
-					libre = haut - bas <= 4 && constructible(level.getBlockState(new BlockPos(ox + i, y, oz + l)));
+					libre = haut - bas <= penteMax && constructible(level.getBlockState(new BlockPos(ox + i, y, oz + l)));
 				}
 			}
 			if (!libre) {

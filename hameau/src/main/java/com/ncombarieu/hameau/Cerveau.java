@@ -86,6 +86,11 @@ public final class Cerveau {
 	 */
 	private static Reponse completer(final AnthropicClient c, final String url, final String profil, final String modele, final String effort, final long maxTokens,
 			final String consignes, final String demande) {
+		return completer(c, url, profil, modele, effort, maxTokens, consignes, demande, 60);
+	}
+
+	private static Reponse completer(final AnthropicClient c, final String url, final String profil, final String modele, final String effort, final long maxTokens,
+			final String consignes, final String demande, final int delaiSecondes) {
 		if (url == null || url.isBlank()) {
 			if (c == null) {
 				throw new IllegalStateException("pas de clé Anthropic");
@@ -124,7 +129,7 @@ public final class Cerveau {
 		}
 		corps.add("messages", messages);
 		java.net.http.HttpRequest.Builder requete = java.net.http.HttpRequest.newBuilder(java.net.URI.create(url.replaceAll("/+$", "") + "/chat/completions"))
-				.header("Content-Type", "application/json").timeout(Duration.ofSeconds(60))
+				.header("Content-Type", "application/json").timeout(Duration.ofSeconds(delaiSecondes))
 				.POST(java.net.http.HttpRequest.BodyPublishers.ofString(corps.toString(), StandardCharsets.UTF_8));
 		if (cle != null) {
 			requete.header("Authorization", "Bearer " + cle);
@@ -138,7 +143,7 @@ public final class Cerveau {
 			}
 			if (reponse.statusCode() == 400 && !nouveauNom && reponse.body().contains("max_completion_tokens")) {
 				NOUVELLE_LIMITE.add(url + " " + modele);
-				return completer(c, url, profil, modele, effort, maxTokens, consignes, demande);
+				return completer(c, url, profil, modele, effort, maxTokens, consignes, demande, delaiSecondes);
 			}
 			if (reponse.statusCode() != 200) {
 				throw new IllegalStateException(profil + " a répondu " + reponse.statusCode() + " : " + (reponse.body().length() > 300 ? reponse.body().substring(0, 300) : reponse.body()));
@@ -320,7 +325,10 @@ public final class Cerveau {
 			long perdusSortie = 0;
 			try {
 				boolean anthropic = config.batir.url == null || config.batir.url.isBlank();
-				Reponse reponse = completer(c, config.batir.url, config.batir.profil, config.batir.modele, anthropic && !config.batir.modele.contains("haiku") ? "low" : "", 9000L, consignes, demande);
+				// Hors Anthropic, on reprend l'effort réglé dans le profil : sans lui, un modèle qui raisonne peut tout dépenser à réfléchir et ne rien répondre.
+				HameauConfig.Modele profilPlans = config.modeles.get(config.batir.profil);
+				String effort = anthropic ? (config.batir.modele.contains("haiku") ? "" : "low") : profilPlans == null || profilPlans.effort == null ? "" : profilPlans.effort;
+				Reponse reponse = completer(c, config.batir.url, config.batir.profil, config.batir.modele, effort, 9000L, consignes, demande, 240);
 				Plan plan = lirePlan(reponse, false, 0, 0);
 				if (plan != null) {
 					return plan;
@@ -331,7 +339,8 @@ public final class Cerveau {
 			} catch (RuntimeException e) {
 				Hameau.LOGGER.warn("Hameau : {} n'a pas pu dessiner le plan ({}), nouvel essai avec {}", config.batir.modele, e.toString(), config.modele);
 			}
-			return lirePlan(completer(c, config.url, config.profil, config.modele, "", 4000L, consignes, demande), true, perdusEntree, perdusSortie);
+			boolean secoursAnthropic = config.url == null || config.url.isBlank();
+			return lirePlan(completer(c, config.url, config.profil, config.modele, secoursAnthropic ? "" : config.effort, secoursAnthropic ? 4000L : 9000L, consignes, demande, 240), true, perdusEntree, perdusSortie);
 		}, FILS);
 	}
 
