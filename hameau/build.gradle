@@ -2,7 +2,7 @@ plugins {
 	id 'net.fabricmc.fabric-loom' version "${loom_version}"
 }
 
-version = '0.10.0'
+version = '0.10.1'
 base {
 	archivesName = 'hameau'
 }
@@ -30,6 +30,28 @@ dependencies {
 
 	sdk "com.anthropic:anthropic-java:2.34.0"
 	implementation "com.anthropic:anthropic-java:2.34.0"
+
+	// Tests unitaires : JUnit lancé dans l'environnement de Fabric, pour que les classes du jeu soient utilisables.
+	testImplementation "net.fabricmc:fabric-loader-junit:${project.loader_version}"
+}
+
+test {
+	useJUnitPlatform()
+	// Les tests écrivent un config/hameau.json d'essai : qu'il aille dans build/, pas dans les sources.
+	workingDir = layout.buildDirectory.dir("run/test").get().asFile
+	doFirst {
+		workingDir.mkdirs()
+	}
+}
+
+// Tests en jeu : ./gradlew :hameau:runGameTest lance un serveur, joue les scénarios de src/gametest et s'arrête.
+// Aucune clé d'API n'y est lue : les tests n'appellent aucun modèle.
+fabricApi {
+	configureTests {
+		createSourceSet = true
+		modId = "hameau-test"
+		eula = true
+	}
 }
 
 // « include » n'est pas transitif : on y ajoute une à une les dépendances résolues du SDK.

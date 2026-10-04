@@ -1,13 +1,15 @@
 # Mods Minecraft
 
-Deux mods Fabric pour **Minecraft 26.3**, côté serveur uniquement :
+Trois mods Fabric pour **Minecraft 26.3**, côté serveur :
 
 | Mod | Dossier | En bref |
 |---|---|---|
-| **Premier Mod** | racine du dépôt | Bienvenue, `/heal`, `/fusee`, `/de`, terre chanceuse, mouton arc-en-ciel |
+| **Hameau** | [`hameau/`](hameau/README.md) | Des villageois qui ont un caractère, une mémoire et une voix, et qui décident eux-mêmes de ce qu'ils font grâce à un modèle de langage |
 | **⌛ Chronomancie** | [`chronomancie/`](chronomancie/README.md) | Failles temporelles, vestiges d'autres époques et artefacts pour remonter, figer, dédoubler ou réparer le temps |
+| **Premier Mod** | racine du dépôt | Bienvenue, `/heal`, `/fusee`, `/de`, terre chanceuse, mouton arc-en-ciel |
 
-`./gradlew build` compile les deux (et lance les tests en jeu de Chronomancie).
+`./gradlew build` compile les trois et lance leurs tests. `outils/chercher-secrets.sh` vérifie qu'aucune clé d'API n'est versionnée ;
+l'intégration continue fait les deux à chaque push.
 
 # Premier Mod
 

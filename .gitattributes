@@ -7,3 +7,7 @@
 # These are Windows script files and should use crlf
 *.bat           text eol=crlf
 
+
+# Binaires : jamais de conversion de fins de ligne ni de diff texte
+*.jar           binary
+*.png           binary

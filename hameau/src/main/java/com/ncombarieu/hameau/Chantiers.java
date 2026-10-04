@@ -327,7 +327,7 @@ public final class Chantiers {
 		return passable;
 	}
 
-	private static Ame.Chantier tracer(final Cerveau.Plan plan, final BlockPos centre, final ServerLevel level, final boolean chercherTerrain) {
+	static Ame.Chantier tracer(final Cerveau.Plan plan, final BlockPos centre, final ServerLevel level, final boolean chercherTerrain) {
 		HameauConfig.Batir reglages = HameauConfig.get().batir;
 		int hauteur = Math.min(plan.couches().size(), reglages.hauteurMax);
 		int profondeur = 0;

@@ -1,12 +1,18 @@
-# Automatically build the project and run any configured tests for every push
-# and submitted pull request. This can help catch issues that only occur on
-# certain platforms or Java versions, and provides a first line of defence
-# against bad commits.
+# Pour chaque push et chaque pull request : cherche des secrets, compile les trois mods
+# et lance leurs tests (tests unitaires et tests en jeu).
 
 name: build
 on: [pull_request, push]
 
 jobs:
+  secrets:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: checkout repository
+        uses: actions/checkout@v6
+      - name: cherche des secrets dans les fichiers suivis
+        run: outils/chercher-secrets.sh
+
   build:
     runs-on: ubuntu-24.04
     steps:
@@ -19,6 +25,7 @@ jobs:
         with:
           java-version: '25'
           distribution: 'microsoft'
+          cache: 'gradle'
       - name: make gradle wrapper executable
         run: chmod +x ./gradlew
       - name: build
@@ -30,3 +37,4 @@ jobs:
           path: |
             build/libs/
             chronomancie/build/libs/
+            hameau/build/libs/

@@ -38,3 +38,20 @@ hs_err_*.log
 replay_*.log
 *.hprof
 *.jfr
+
+# éditeurs
+
+*.swp
+*.swo
+*~
+
+# secrets : les clés d'API vivent sur le serveur (config/hameau-cles/), jamais dans le dépôt
+
+hameau-cles/
+*-cle.txt
+.env
+.env.*
+
+# journaux
+
+*.log

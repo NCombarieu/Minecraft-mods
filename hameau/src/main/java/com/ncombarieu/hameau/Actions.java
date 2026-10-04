@@ -2,6 +2,7 @@ package com.ncombarieu.hameau;
 
 import java.util.HashMap;
 import java.util.Iterator;
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
@@ -157,8 +158,10 @@ public final class Actions {
 		}
 	}
 
-	private static String normaliser(final String action) {
-		return switch (action == null ? "rien" : action) {
+	/** Ramène les synonymes à l'action connue ; une action absente vaut « rien ». */
+	static String normaliser(final String action) {
+		String demandee = action == null || action.isBlank() ? "rien" : action.trim().toLowerCase();
+		return switch (demandee) {
 			case "offrir" -> "donner";
 			case "attaquer", "taper", "chasser", "tuer", "abattre_bete" -> "frapper";
 			case "creuser_mine", "extraire", "piocher_minerai", "prospecter" -> "miner";
@@ -179,7 +182,7 @@ public final class Actions {
 			case "feter", "fêter", "celebrer", "célébrer", "sauter" -> "danser";
 			case "arrêter", "stop", "abandonner" -> "arreter";
 			case "travailler", "dormir", "attendre", "parler", "observer", "continuer" -> "rien";
-			default -> action;
+			default -> demandee;
 		};
 	}
 
@@ -419,7 +422,7 @@ public final class Actions {
 	private static final java.util.regex.Pattern TROIS_NOMBRES = java.util.regex.Pattern.compile("(-?\\d+)[ ,;]+(-?\\d+)[ ,;]+(-?\\d+)");
 
 	/** Lit « x y z », même noyé dans du texte (« Chest en -541 71 66 »). */
-	private static BlockPos coordonnees(final String texte) {
+	static BlockPos coordonnees(final String texte) {
 		if (texte == null) {
 			return null;
 		}
@@ -1172,7 +1175,8 @@ public final class Actions {
 		}
 		// 3. Avancer dans la case dégagée.
 		if (geste.pas != null) {
-			if (villageois.blockPosition().closerThan(geste.pas, 1.2)) {
+			// Arrivé, c'est être dans la case, pas à côté : sinon le pas suivant se calcule depuis l'ancienne et il piétine.
+			if (Math.abs(villageois.getX() - (geste.pas.getX() + 0.5)) < 0.45 && Math.abs(villageois.getZ() - (geste.pas.getZ() + 0.5)) < 0.45 && Math.abs(villageois.getY() - geste.pas.getY()) < 1.2) {
 				geste.pas = null;
 			} else if (maintenant > geste.delaiPas) {
 				villageois.teleportTo(geste.pas.getX() + 0.5, geste.pas.getY(), geste.pas.getZ() + 0.5);
@@ -1180,7 +1184,9 @@ public final class Actions {
 				geste.pas = null;
 			} else {
 				// Dans une galerie le chemin est tout tracé : on le fait avancer droit devant, sans attendre que son cerveau de villageois s'y décide.
+				// Sans cela, une promenade déjà entamée par son cerveau l'emporte ailleurs.
 				villageois.getBrain().eraseMemory(MemoryModuleType.WALK_TARGET);
+				villageois.getNavigation().stop();
 				villageois.getMoveControl().setWantedPosition(geste.pas.getX() + 0.5, geste.pas.getY(), geste.pas.getZ() + 0.5, 0.6);
 				return false;
 			}
@@ -1225,13 +1231,14 @@ public final class Actions {
 			}
 			level.setBlockAndUpdate(appui, net.minecraft.world.level.block.Blocks.COBBLESTONE.defaultBlockState());
 		}
-		geste.aDegager.add(suivant.above());
-		geste.aDegager.add(suivant);
-		if (pente != 0) {
-			geste.aDegager.add(pente < 0 ? suivant.above(2) : ici.above(2));
+		// À l'air libre il n'y a rien à dégager : il avance d'un pas sans perdre de temps.
+		for (BlockPos obstacle : pente == 0 ? List.of(suivant.above(), suivant) : List.of(suivant.above(), suivant, pente < 0 ? suivant.above(2) : ici.above(2))) {
+			if (!level.getBlockState(obstacle).getCollisionShape(level, obstacle).isEmpty()) {
+				geste.aDegager.add(obstacle);
+			}
 		}
 		geste.pas = suivant;
-		geste.delaiPas = maintenant + 50;
+		geste.delaiPas = maintenant + 30;
 		geste.galerie++;
 		if (geste.galerie % 7 == 0 && level.getBlockState(ici).isAir() && level.getBlockState(ici.below()).isSolid() && level.getMaxLocalRawBrightness(ici) < 8) {
 			level.setBlockAndUpdate(ici, net.minecraft.world.level.block.Blocks.TORCH.defaultBlockState());

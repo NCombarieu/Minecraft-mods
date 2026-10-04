@@ -1,0 +1,15 @@
+{
+	"schemaVersion": 1,
+	"id": "hameau-test",
+	"version": "1.0.0",
+	"name": "Hameau (tests)",
+	"environment": "*",
+	"entrypoints": {
+		"fabric-gametest": [
+			"com.ncombarieu.hameau.HameauTests"
+		]
+	},
+	"depends": {
+		"hameau": "*"
+	}
+}

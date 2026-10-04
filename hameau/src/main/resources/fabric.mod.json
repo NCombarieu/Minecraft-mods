@@ -3,7 +3,7 @@
 	"id": "hameau",
 	"version": "${version}",
 	"name": "Hameau",
-	"description": "Les villageois ont un nom, un caractère, une mémoire et des relations. Ils décident eux-mêmes de leur journée grâce à Claude.",
+	"description": "Les villageois ont un nom, un caractère, une mémoire, des relations et une voix. Ils décident eux-mêmes de ce qu'ils font grâce à un modèle de langage.",
 	"authors": [
 		"NCombarieu"
 	],
