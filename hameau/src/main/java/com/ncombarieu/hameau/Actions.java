@@ -333,6 +333,44 @@ public final class Actions {
 		return null;
 	}
 
+	/** Le pied de l'arbre le plus proche, en « x y z », ou null. */
+	static String arbre(final Villager villageois) {
+		ServerLevel level = (ServerLevel) villageois.level();
+		BlockPos centre = villageois.blockPosition();
+		BlockPos tronc = null;
+		for (BlockPos pos : BlockPos.betweenClosed(centre.offset(-16, -3, -16), centre.offset(16, 6, 16))) {
+			if (level.getBlockState(pos).is(net.minecraft.tags.BlockTags.LOGS) && !level.getBlockState(pos.below()).is(net.minecraft.tags.BlockTags.LOGS)
+					&& level.getBlockState(pos.above()).is(net.minecraft.tags.BlockTags.LOGS) && (tronc == null || pos.distSqr(centre) < tronc.distSqr(centre))) {
+				tronc = pos.immutable();
+			}
+		}
+		return tronc == null ? null : Perception.coord(tronc);
+	}
+
+	/** Le coffre (ou tonneau) le plus proche, en « x y z », ou null. */
+	static String coffre(final Villager villageois) {
+		ServerLevel level = (ServerLevel) villageois.level();
+		BlockPos centre = villageois.blockPosition();
+		BlockPos proche = null;
+		for (BlockPos pos : BlockPos.betweenClosed(centre.offset(-12, -4, -12), centre.offset(12, 4, 12))) {
+			if (level.getBlockState(pos).hasBlockEntity() && level.getBlockEntity(pos) instanceof Container && (proche == null || pos.distSqr(centre) < proche.distSqr(centre))) {
+				proche = pos.immutable();
+			}
+		}
+		return proche == null ? null : Perception.coord(proche);
+	}
+
+	/** L'espèce de la bête la plus proche, ou null. */
+	static String gibier(final Villager villageois) {
+		net.minecraft.world.entity.animal.Animal proche = null;
+		for (net.minecraft.world.entity.animal.Animal bete : villageois.level().getEntitiesOfClass(net.minecraft.world.entity.animal.Animal.class, villageois.getBoundingBox().inflate(24), Entity::isAlive)) {
+			if (proche == null || villageois.distanceToSqr(bete) < villageois.distanceToSqr(proche)) {
+				proche = bete;
+			}
+		}
+		return proche == null ? null : BuiltInRegistries.ENTITY_TYPE.getKey(proche.getType()).getPath();
+	}
+
 	private static final Map<String, String> ESPECES = Map.ofEntries(Map.entry("vache", "cow"), Map.entry("mouton", "sheep"), Map.entry("cochon", "pig"), Map.entry("porc", "pig"),
 			Map.entry("poule", "chicken"), Map.entry("poulet", "chicken"), Map.entry("lapin", "rabbit"), Map.entry("cheval", "horse"), Map.entry("loup", "wolf"), Map.entry("renard", "fox"),
 			Map.entry("chevre", "goat"), Map.entry("squelette", "skeleton"), Map.entry("araignee", "spider"), Map.entry("sorciere", "witch"), Map.entry("pillard", "pillager"), Map.entry("noye", "drowned"));
@@ -597,6 +635,9 @@ public final class Actions {
 						return true;
 					}
 					if (geste.coups >= (gibier ? 15 : autonomie.coupsMax)) {
+						if (!gibier) {
+							Ames.journal(ame, level, ame.nom + " a frappé " + nomCible + ".");
+						}
 						ame.noter("Tu as frappé " + nomCible + " (" + geste.coups + " coups).");
 						return true;
 					}
@@ -734,6 +775,7 @@ public final class Actions {
 		String ou = Perception.coord(pos);
 		ame.noter("Tu as planté une pancarte en " + ou + " : « " + texte + " »");
 		Vie.temoins(villageois, null, ame.nom + " a planté une pancarte en " + ou + " où l'on lit : « " + texte + " »", false);
+		Ames.journal(ame, level, ame.nom + " a planté une pancarte en " + ou + " : « " + texte + " »");
 	}
 
 	/** Actionne ce qui peut l'être : porte, trappe, portillon, cloche, levier. */
@@ -928,6 +970,7 @@ public final class Actions {
 						coffre.setChanged();
 						ame.noter("Tu as pris " + quoi + " dans : " + nomBloc + " en " + ou + ".");
 						Vie.temoins(villageois, null, "Tu as vu " + ame.nom + " prendre " + quoi + " dans un coffre en " + ou + ".", true);
+						Ames.journal(ame, level, ame.nom + " a pris " + quoi + " dans un coffre en " + ou + ".");
 						return;
 					}
 				}
@@ -1069,6 +1112,7 @@ public final class Actions {
 		ame.noter("Mine : " + raison + " " + bilan + (geste.galerie > 3 ? " Ta galerie s'arrête en " + Perception.coord(villageois.blockPosition()) + "." : ""));
 		if (geste.blocsFaits > 0) {
 			Vie.temoins(villageois, null, "Tu as vu " + ame.nom + " revenir de la mine avec " + geste.blocsFaits + " blocs de " + geste.nomRessource + ".", false);
+			Ames.journal(ame, level, ame.nom + " est revenu de la mine avec " + geste.blocsFaits + " blocs de " + geste.nomRessource + ".");
 		}
 		return true;
 	}

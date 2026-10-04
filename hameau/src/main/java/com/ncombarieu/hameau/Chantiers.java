@@ -6,7 +6,14 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
+import com.mojang.brigadier.exceptions.CommandSyntaxException;
+
+import net.minecraft.ChatFormatting;
+import net.minecraft.commands.arguments.blocks.BlockStateParser;
 import net.minecraft.core.BlockPos;
+import net.minecraft.core.particles.ParticleTypes;
+import net.minecraft.network.chat.Component;
+import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.core.Direction;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.resources.Identifier;
@@ -35,9 +42,14 @@ import net.minecraft.world.phys.Vec3;
 
 /** Les constructions : un plan imaginé par Claude, puis posé bloc par bloc par le villageois et ceux qui l'aident. */
 public final class Chantiers {
-	private static final String[] INTERDITS = {"tnt", "lava", "fire", "bedrock", "barrier", "command", "structure", "portal", "spawner", "jigsaw", "end_", "bed", "chest", "shulker", "piston", "dispenser", "dropper", "hopper", "observer"};
+	private static final String[] INTERDITS = {"tnt", "lava", "fire", "bedrock", "barrier", "command", "structure", "portal", "spawner", "jigsaw", "end_", "_bed", "shulker", "piston", "dispenser", "dropper", "hopper", "observer"};
 	/** Par ouvrier : tick de la prochaine pose, et tick du dernier bloc réellement posé. */
 	private static final Map<UUID, long[]> RYTHME = new HashMap<>();
+	/** Les chantiers montrés à un joueur, en attente de son avis. */
+	private static final Map<UUID, Projet> PROJETS = new HashMap<>();
+
+	private record Projet(Ame ame, Cerveau.Plan plan, Ame.Chantier chantier, long echeance) {
+	}
 
 	private Chantiers() {
 	}
@@ -90,27 +102,149 @@ public final class Chantiers {
 				ame.noter("Ton plan ne contenait rien de constructible. Il faudra y repenser.");
 				return;
 			}
-			ame.chantier = chantier;
-			String ou = chantier.x + " " + chantier.y + " " + chantier.z;
-			ame.noter("Tu as dessiné le plan de « " + chantier.nom + " » (" + chantier.total + " blocs) et tu commences à bâtir en " + ou + ".");
-			Vie.temoins(present, null, ame.nom + " commence à bâtir « " + chantier.nom + " » en " + ou + ".", false);
-			Bulles.montrer(present, "* se met à bâtir : " + chantier.nom + " *", true, server.getTickCount());
-			Hameau.LOGGER.info("[{}] chantier « {} » : {} blocs en {} ({} tokens en sortie{})", ame.nom, chantier.nom, chantier.total, ou, plan.tokensSortie(), plan.secours() ? ", modèle de secours" : "");
+			// Un joueur est là : on lui montre l'emplacement et on attend son avis avant de poser la première pierre.
+			int attente = config.batir.apercuSecondes;
+			List<ServerPlayer> presents = level.getPlayers(j -> !j.isSpectator() && j.distanceToSqr(chantier.x + 0.5, chantier.y, chantier.z + 0.5) < 32 * 32);
+			if (attente > 0 && !presents.isEmpty()) {
+				ame.planEnCours = true;
+				PROJETS.put(uuid, new Projet(ame, plan, chantier, server.getTickCount() + attente * 20L));
+				ame.noter("Tu as dessiné le plan de « " + chantier.nom + " » et tu montres l'emplacement à " + presents.getFirst().getName().getString() + " avant de commencer.");
+				Bulles.montrer(present, "* montre l'emplacement de : " + chantier.nom + " *", true, server.getTickCount());
+				Component message = Component.literal(ame.nom + " veut bâtir « " + chantier.nom + " » (" + chantier.total + " blocs, " + chantier.largeur + " × " + chantier.profondeur + ", " + chantier.hauteur
+						+ " de haut) à l'emplacement balisé. ").withStyle(ChatFormatting.GOLD)
+						.append(bouton("[Valider]", "valider", ame.nom, ChatFormatting.GREEN, "Il commence tout de suite"))
+						.append(Component.literal(" "))
+						.append(bouton("[Bâtir là où je suis]", "ici", ame.nom, ChatFormatting.AQUA, "Place-toi au centre de l'endroit voulu, puis clique"))
+						.append(Component.literal(" "))
+						.append(bouton("[Annuler]", "annuler", ame.nom, ChatFormatting.RED, "Il renonce à ce chantier"))
+						.append(Component.literal(" Sans réponse, il commence dans " + attente + " s.").withStyle(ChatFormatting.GRAY));
+				presents.forEach(joueur -> joueur.sendSystemMessage(message));
+				Hameau.LOGGER.info("[{}] plan « {} » montré à {} en {} {} {}", ame.nom, chantier.nom, presents.getFirst().getName().getString(), chantier.x, chantier.y, chantier.z);
+				return;
+			}
+			ouvrir(present, ame, chantier, plan, server);
 		}));
 	}
 
-	private static Block bloc(final String identifiant) {
-		if (identifiant == null) {
+	private static Component bouton(final String texte, final String choix, final String prenom, final ChatFormatting couleur, final String bulle) {
+		return Component.literal(texte).withStyle(style -> style.withColor(couleur).withBold(true)
+				.withClickEvent(new net.minecraft.network.chat.ClickEvent.RunCommand("/hameau chantier " + choix + " " + prenom))
+				.withHoverEvent(new net.minecraft.network.chat.HoverEvent.ShowText(Component.literal(bulle))));
+	}
+
+	/** Le chantier commence pour de bon. */
+	private static void ouvrir(final Villager present, final Ame ame, final Ame.Chantier chantier, final Cerveau.Plan plan, final MinecraftServer server) {
+		ame.planEnCours = false;
+		ame.chantier = chantier;
+		String ou = chantier.x + " " + chantier.y + " " + chantier.z;
+		ame.noter("Tu as dessiné le plan de « " + chantier.nom + " » (" + chantier.total + " blocs) et tu commences à bâtir en " + ou + ".");
+		Vie.temoins(present, null, ame.nom + " commence à bâtir « " + chantier.nom + " » en " + ou + ".", false);
+		Ames.journal(ame, (ServerLevel) present.level(), ame.nom + " a commencé à bâtir « " + chantier.nom + " » en " + ou + ".");
+		Bulles.montrer(present, "* se met à bâtir : " + chantier.nom + " *", true, server.getTickCount());
+		Hameau.LOGGER.info("[{}] chantier « {} » : {} blocs en {} ({} tokens en sortie{})", ame.nom, chantier.nom, chantier.total, ou, plan.tokensSortie(), plan.secours() ? ", modèle de secours" : "");
+	}
+
+	/** Balise les chantiers en attente d'avis, et ouvre ceux dont le délai est passé. */
+	static void tick(final MinecraftServer server) {
+		long maintenant = server.getTickCount();
+		if (PROJETS.isEmpty() || maintenant % 10 != 0) {
+			return;
+		}
+		for (UUID uuid : new ArrayList<>(PROJETS.keySet())) {
+			Projet projet = PROJETS.get(uuid);
+			Villager present = Vie.trouver(server, uuid);
+			if (present == null || !present.isAlive()) {
+				PROJETS.remove(uuid);
+				projet.ame().planEnCours = false;
+				continue;
+			}
+			if (maintenant >= projet.echeance()) {
+				PROJETS.remove(uuid);
+				ouvrir(present, projet.ame(), projet.chantier(), projet.plan(), server);
+				continue;
+			}
+			baliser((ServerLevel) present.level(), projet.chantier());
+		}
+	}
+
+	/** Le contour de l'emprise au sol et quatre poteaux d'angle jusqu'au faîte, en particules. */
+	private static void baliser(final ServerLevel level, final Ame.Chantier c) {
+		int ox = c.x - c.largeur / 2;
+		int oz = c.z - c.profondeur / 2;
+		double y = c.y + 1.15;
+		for (int i = 0; i <= c.largeur; i++) {
+			level.sendParticles(ParticleTypes.END_ROD, ox + i, y, oz, 1, 0, 0, 0, 0);
+			level.sendParticles(ParticleTypes.END_ROD, ox + i, y, oz + c.profondeur, 1, 0, 0, 0, 0);
+		}
+		for (int l = 1; l < c.profondeur; l++) {
+			level.sendParticles(ParticleTypes.END_ROD, ox, y, oz + l, 1, 0, 0, 0, 0);
+			level.sendParticles(ParticleTypes.END_ROD, ox + c.largeur, y, oz + l, 1, 0, 0, 0, 0);
+		}
+		for (int h = 1; h <= c.hauteur; h++) {
+			for (int coin = 0; coin < 4; coin++) {
+				level.sendParticles(ParticleTypes.HAPPY_VILLAGER, ox + (coin % 2) * c.largeur, y + h, oz + (coin / 2) * c.profondeur, 1, 0, 0, 0, 0);
+			}
+		}
+	}
+
+	/**
+	 * Un joueur donne son avis sur un chantier balisé.
+	 * @return ce qu'il faut lui répondre, ou null si ce villageois n'a rien en attente
+	 */
+	static String decider(final MinecraftServer server, final Villager villageois, final Ame ame, final String choix, final ServerPlayer joueur) {
+		Projet projet = PROJETS.remove(villageois.getUUID());
+		if (projet == null) {
 			return null;
 		}
-		String id = identifiant.trim().toLowerCase();
+		String qui = joueur.getName().getString();
+		switch (choix) {
+			case "annuler" -> {
+				ame.planEnCours = false;
+				ame.noter(qui + " n'a pas voulu de « " + projet.chantier().nom + " » à cet endroit : tu renonces à ce chantier.");
+				ame.presser(server.getTickCount(), 2);
+				return ame.nom + " renonce à « " + projet.chantier().nom + " ».";
+			}
+			case "ici" -> {
+				// Là où le joueur se tient, sans rien chercher d'autre : c'est lui qui choisit.
+				Ame.Chantier ailleurs = tracer(projet.plan(), joueur.blockPosition(), (ServerLevel) villageois.level(), false);
+				if (ailleurs == null || ailleurs.restants.isEmpty()) {
+					PROJETS.put(villageois.getUUID(), projet);
+					return "Impossible de tracer le plan ici.";
+				}
+				ame.noter(qui + " t'a montré où bâtir « " + ailleurs.nom + " » : là où il se tenait.");
+				ouvrir(villageois, ame, ailleurs, projet.plan(), server);
+				return ame.nom + " bâtira « " + ailleurs.nom + " » autour de " + ailleurs.x + " " + ailleurs.y + " " + ailleurs.z + ".";
+			}
+			default -> {
+				ame.noter(qui + " approuve l'emplacement de « " + projet.chantier().nom + " ».");
+				ouvrir(villageois, ame, projet.chantier(), projet.plan(), server);
+				return ame.nom + " commence « " + projet.chantier().nom + " ».";
+			}
+		}
+	}
+
+	/** Lit « minecraft:oak_stairs[facing=north,half=top] » ; null si c'est un bloc interdit ou inconnu. */
+	private static BlockState etat(final String texte) {
+		if (texte == null) {
+			return null;
+		}
+		String id = texte.trim().toLowerCase();
 		for (String interdit : INTERDITS) {
 			if (id.contains(interdit)) {
 				return null;
 			}
 		}
-		Identifier cle = Identifier.tryParse(id.contains(":") ? id : "minecraft:" + id);
-		return cle == null ? null : BuiltInRegistries.BLOCK.getOptional(cle).orElse(null);
+		try {
+			BlockState etat = BlockStateParser.parseForBlock(BuiltInRegistries.BLOCK, id.contains(":") ? id : "minecraft:" + id, false).blockState();
+			// Un feuillage posé de main d'homme ne doit pas se faner.
+			return etat.hasProperty(BlockStateProperties.PERSISTENT) ? etat.setValue(BlockStateProperties.PERSISTENT, true) : etat;
+		} catch (CommandSyntaxException e) {
+			// États fantaisistes : on garde au moins le bloc.
+			int crochet = id.indexOf('[');
+			Identifier cle = Identifier.tryParse((id.contains(":") ? "" : "minecraft:") + (crochet < 0 ? id : id.substring(0, crochet)));
+			Block bloc = cle == null ? null : BuiltInRegistries.BLOCK.getOptional(cle).orElse(null);
+			return bloc == null ? null : bloc.defaultBlockState();
+		}
 	}
 
 	/** Transforme le plan en liste de blocs à poser : du bas vers le haut, les éléments fragiles (portes, torches) en dernier. */
@@ -218,6 +352,9 @@ public final class Chantiers {
 		}
 		chantier.x = ox + largeur / 2;
 		chantier.z = oz + profondeur / 2;
+		chantier.largeur = largeur;
+		chantier.profondeur = profondeur;
+		chantier.hauteur = hauteur;
 		// Le sol du bâtiment remplace la couche supérieure du terrain, au niveau médian de l'emprise :
 		// une butte sera entaillée, un creux comblé par les fondations.
 		List<Integer> niveaux = new ArrayList<>();
@@ -269,15 +406,18 @@ public final class Chantiers {
 				for (int i = 0; i < Math.min(ligne.length(), largeur); i++) {
 					String caractere = String.valueOf(ligne.charAt(i));
 					// « ~ » : creuser, vider cet emplacement.
-					Block bloc = caractere.equals(".") || caractere.equals(" ") ? null : caractere.equals("~") ? Blocks.AIR : bloc(plan.palette().get(caractere));
-					if (bloc == null || (bloc == Blocks.AIR && !caractere.equals("~"))) {
+					String code = plan.palette().get(caractere);
+					BlockState voulu = caractere.equals(".") || caractere.equals(" ") ? null : caractere.equals("~") ? Blocks.AIR.defaultBlockState() : etat(code);
+					if (voulu == null || (voulu.isAir() && !caractere.equals("~"))) {
 						continue;
 					}
-					String entree = (ox + i) + " " + (chantier.y + c) + " " + (oz + l) + " " + BuiltInRegistries.BLOCK.getKey(bloc);
-					if (bloc instanceof DoorBlock) {
-						// La porte se couche dans le plan du mur qui la porte.
-						fragiles.add(entree + " " + (i == 0 || i == largeur - 1 ? "east" : "north"));
-					} else if (bloc.defaultBlockState().getCollisionShape(level, BlockPos.ZERO).isEmpty()) {
+					String entree = (ox + i) + " " + (chantier.y + c) + " " + (oz + l) + " " + BlockStateParser.serialize(voulu);
+					if (voulu.getBlock() instanceof DoorBlock) {
+						// Sans orientation donnée par le plan, la porte se couche dans le plan du mur qui la porte.
+						if (voulu.getValue(BlockStateProperties.DOUBLE_BLOCK_HALF) == DoubleBlockHalf.LOWER) {
+							fragiles.add(entree + (code.contains("facing") ? "" : " " + (i == 0 || i == largeur - 1 ? "east" : "north")));
+						}
+					} else if (voulu.getCollisionShape(level, BlockPos.ZERO).isEmpty()) {
 						fragiles.add(entree);
 					} else {
 						chantier.restants.add(entree);
@@ -326,15 +466,15 @@ public final class Chantiers {
 		for (int rang = 0; rang < Math.min(chantier.restants.size(), 12); rang++) {
 			String[] parties = chantier.restants.get(rang).split(" ");
 			BlockPos pos = new BlockPos(Integer.parseInt(parties[0]), Integer.parseInt(parties[1]), Integer.parseInt(parties[2]));
-			Block bloc = bloc(parties[3]);
-			if (bloc == null) {
+			BlockState voulu = etat(parties[3]);
+			if (voulu == null) {
 				chantier.restants.remove(rang);
 				return false;
 			}
-			BlockState voulu = bloc.defaultBlockState();
+			Block bloc = voulu.getBlock();
 			BlockState actuel = level.getBlockState(pos);
 				boolean creuse = bloc == Blocks.AIR;
-			if (actuel.is(bloc) || actuel.hasBlockEntity() || actuel.getDestroySpeed(level, pos) < 0) {
+			if (actuel == voulu || (actuel.is(bloc) && voulu == bloc.defaultBlockState()) || actuel.hasBlockEntity() || actuel.getDestroySpeed(level, pos) < 0) {
 				// Déjà en place, ou quelque chose d'intouchable occupe l'endroit : on passe.
 				chantier.restants.remove(rang);
 				return false;
@@ -395,8 +535,9 @@ public final class Chantiers {
 				break;
 			}
 			if (bloc instanceof DoorBlock) {
-				Direction face = parties.length > 4 && parties[4].equals("east") ? Direction.EAST : Direction.NORTH;
-				voulu = voulu.setValue(BlockStateProperties.HORIZONTAL_FACING, face);
+				if (parties.length > 4) {
+					voulu = voulu.setValue(BlockStateProperties.HORIZONTAL_FACING, parties[4].equals("east") ? Direction.EAST : Direction.NORTH);
+				}
 				level.setBlockAndUpdate(pos, voulu.setValue(BlockStateProperties.DOUBLE_BLOCK_HALF, DoubleBlockHalf.LOWER));
 				level.setBlockAndUpdate(pos.above(), voulu.setValue(BlockStateProperties.DOUBLE_BLOCK_HALF, DoubleBlockHalf.UPPER));
 			} else {
@@ -424,6 +565,7 @@ public final class Chantiers {
 				proprietaire.ajusterRelation(ouvrier.nom, 12);
 			}
 			Vie.temoins(villageois, null, proprietaire.nom + " a achevé de bâtir « " + chantier.nom + " » en " + ou + ".", false);
+			Ames.journal(proprietaire, level, proprietaire.nom + " a achevé « " + chantier.nom + " » en " + ou + (ouvrier != proprietaire ? ", avec l'aide de " + ouvrier.nom : "") + ".");
 			Bulles.emouvoir(villageois, ouvrier, "joie", false);
 			Hameau.LOGGER.info("[{}] chantier « {} » achevé", proprietaire.nom, chantier.nom);
 			return true;

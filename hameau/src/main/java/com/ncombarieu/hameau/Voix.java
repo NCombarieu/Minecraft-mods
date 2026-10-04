@@ -432,7 +432,7 @@ public final class Voix {
 	 * Fait dire la réplique à voix haute, si quelqu'un peut l'entendre.
 	 * @param seul le seul joueur qui doit entendre (chuchotement), ou null pour tous ceux à portée
 	 */
-	static void parler(final MinecraftServer server, final Villager villageois, final Ame ame, final String replique, final UUID seul) {
+	static void parler(final MinecraftServer server, final Villager villageois, final Ame ame, final String replique, final UUID seul, final boolean pourUnJoueur) {
 		HameauConfig.Voix config = HameauConfig.get().voix;
 		Diffuseur d = diffuseur;
 		if (!active() || System.currentTimeMillis() < pauseJusqua || EN_VOL.get() >= 4) {
@@ -441,7 +441,8 @@ public final class Voix {
 		String dit = replique.replaceAll("[*_#«»\"]", " ").replaceAll("\\s+", " ").trim();
 		String texte = dit.length() > 400 ? dit.substring(0, 400) : dit;
 		float distance = seul != null ? Math.min(config.distance, 8) : config.distance;
-		if (texte.isEmpty() || !Ames.budget.voixAutorisee(texte.length()) || !d.aDesAuditeurs(villageois, seul, distance)) {
+		// Ce qui se dit entre villageois ne vaut d'être entendu que de tout près.
+		if (texte.isEmpty() || !Ames.budget.voixAutorisee(texte.length()) || !Ames.budget.autorise() || !d.aDesAuditeurs(villageois, seul, pourUnJoueur ? distance : Math.min(distance, config.distanceBavardage))) {
 			return;
 		}
 		Timbre timbre = attribuer(ame);
@@ -465,6 +466,7 @@ public final class Voix {
 			}
 			panne = null;
 			Ames.budget.voixDite(texte.length());
+			Ames.budget.depenser(son.length / 48000.0 / 60 * moteur(config.synthese).prixVoixParMinute);
 			Villager present = Vie.trouver(server, uuid);
 			Diffuseur actuel = diffuseur;
 			if (present != null && present.isAlive() && actuel != null) {
@@ -498,6 +500,7 @@ public final class Voix {
 					return;
 				}
 				Ames.budget.ecoutee(secondes);
+				Ames.budget.depenser(secondes / 60.0 * moteur(HameauConfig.get().voix.transcription).prixTranscriptionParMinute);
 				// Un souffle ou un bruit donne une transcription vide ou d'un seul signe.
 				if (dit.replaceAll("[^\\p{L}\\p{N}]", "").length() < 2 || parleur.isRemoved()) {
 					return;
@@ -534,6 +537,7 @@ public final class Voix {
 				return;
 			}
 			Ames.budget.voixDite(phrase.length());
+			Ames.budget.depenser(son.length / 48000.0 / 60 * moteur(config.synthese).prixVoixParMinute);
 			source.sendSuccess(() -> Component.literal(String.format("Synthèse par %s : %.1f s de son reçues en %d ms (voix « %s »).", config.synthese, son.length / 48000.0, System.currentTimeMillis() - depart, voix))
 					.withStyle(ChatFormatting.YELLOW), false);
 			Diffuseur d = diffuseur;

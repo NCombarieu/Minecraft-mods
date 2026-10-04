@@ -67,8 +67,12 @@ public final class Ame {
 		public int y;
 		public int z;
 		public int total;
-		/** « x y z identifiant [orientation] », dans l'ordre de pose. */
+		/** « x y z bloc[états] [orientation] », dans l'ordre de pose. */
 		public List<String> restants = new ArrayList<>();
+		/** Emprise au sol et hauteur, pour montrer l'emplacement avant de commencer. */
+		transient int largeur;
+		transient int profondeur;
+		transient int hauteur;
 	}
 
 	/** Opinion sur les autres, par nom, de -100 (haine) à 100 (affection). */

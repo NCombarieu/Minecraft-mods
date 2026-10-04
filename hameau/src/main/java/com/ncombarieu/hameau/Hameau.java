@@ -39,6 +39,7 @@ public class Hameau implements ModInitializer {
 			Vie.tick(server);
 			Actions.tick(server);
 			Corps.tick(server);
+			Chantiers.tick(server);
 			Voix.tick(server);
 			Bulles.tick(server.getTickCount());
 		});
@@ -48,9 +49,14 @@ public class Hameau implements ModInitializer {
 			Bulles.toutEffacer();
 			Corps.toutRetirer();
 		});
-		ServerPlayConnectionEvents.JOIN.register((handler, sender, server) -> handler.getPlayer().sendSystemMessage(
-				Component.literal("Les villageois d'ici ont leur caractère. Parle-leur dans le chat quand tu es près d'eux (cite leur prénom pour t'adresser à l'un d'eux) ; accroupi + clic droit pour leur offrir un objet.")
-						.withStyle(ChatFormatting.GRAY, ChatFormatting.ITALIC)));
+		ServerPlayConnectionEvents.JOIN.register((handler, sender, server) -> {
+			handler.getPlayer().sendSystemMessage(Component.literal("Les villageois d'ici ont leur caractère. Parle-leur dans le chat ou au micro quand tu es près d'eux ; accroupi + clic droit pour leur offrir un objet. /hameau help pour le reste.")
+					.withStyle(ChatFormatting.GRAY, ChatFormatting.ITALIC));
+			int nouvelles = Ames.nouvelles(handler.getPlayer().getName().getString());
+			if (nouvelles > 0) {
+				handler.getPlayer().sendSystemMessage(Component.literal("Il s'est passé " + nouvelles + " chose" + (nouvelles > 1 ? "s" : "") + " au village depuis ta dernière lecture : /hameau journal").withStyle(ChatFormatting.GOLD));
+			}
+		});
 
 		LOGGER.info("Hameau : le village s'éveille ({}).", Cerveau.pret() ? HameauConfig.get().modele : "sans clé pour " + HameauConfig.get().profil);
 	}

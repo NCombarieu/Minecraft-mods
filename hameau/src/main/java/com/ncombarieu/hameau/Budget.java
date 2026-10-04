@@ -72,6 +72,13 @@ public final class Budget {
 		tokensSortie += sortie;
 	}
 
+	/** Une dépense qui ne se compte pas en tokens (voix, transcription). */
+	public void depenser(final double usd) {
+		changerDeJour();
+		totalUsd += usd;
+		jourUsd += usd;
+	}
+
 	public String resume() {
 		changerDeJour();
 		HameauConfig c = HameauConfig.get();

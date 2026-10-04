@@ -62,7 +62,11 @@ public final class HameauConfig {
 		modeles.putIfAbsent("mistral", new Modele("https://api.mistral.ai/v1", "mistral-small-latest", "", 1200, 0, 0));
 		modeles.putIfAbsent("mistral-large", new Modele("https://api.mistral.ai/v1", "mistral-large-latest", "", 1200, 0, 0));
 		modeles.putIfAbsent("qwen", new Modele("https://dashscope-intl.aliyuncs.com/compatible-mode/v1", "qwen-plus", "", 1200, 0, 0));
-		modeles.putIfAbsent("openai", new Modele("https://api.openai.com/v1", "gpt-4o-mini", "", 1200, 0, 0));
+		modeles.putIfAbsent("openai", new Modele("https://api.openai.com/v1", "gpt-4o-mini", "", 1200, 0.15, 0.60));
+		modeles.putIfAbsent("openai-luna", new Modele("https://api.openai.com/v1", "gpt-6-luna", "low", 1200, 0.10, 0.50));
+		modeles.putIfAbsent("openai-sol", new Modele("https://api.openai.com/v1", "gpt-6-sol", "low", 1200, 2.0, 10.0));
+		modeles.putIfAbsent("openai-sol61", new Modele("https://api.openai.com/v1", "gpt-6.1-sol", "low", 1200, 2.0, 10.0));
+		modeles.putIfAbsent("openai-astra", new Modele("https://api.openai.com/v1", "gpt-6-astra", "low", 1200, 10.0, 50.0));
 		modeles.putIfAbsent("openrouter", new Modele("https://openrouter.ai/api/v1", "", "", 1200, 0, 0));
 		if (voix == null) {
 			voix = new Voix();
@@ -73,6 +77,11 @@ public final class HameauConfig {
 		voix.moteurs.putIfAbsent("elevenlabs", new Moteur("elevenlabs", "https://api.elevenlabs.io/v1", "eleven_flash_v2_5", "scribe_v1", java.util.List.of(), false));
 		voix.moteurs.putIfAbsent("openai", new Moteur("openai", "https://api.openai.com/v1", "gpt-4o-mini-tts", "gpt-4o-mini-transcribe",
 				java.util.List.of("alloy:n", "ash:m", "ballad:m", "coral:f", "echo:m", "fable:n", "nova:f", "onyx:m", "sage:f", "shimmer:f"), true));
+		Moteur openai = voix.moteurs.get("openai");
+		if (openai.prixVoixParMinute == 0 && openai.prixTranscriptionParMinute == 0 && openai.url.contains("api.openai.com")) {
+			openai.prixVoixParMinute = 0.015;
+			openai.prixTranscriptionParMinute = 0.003;
+		}
 		voix.moteurs.putIfAbsent("mistral", new Moteur("openai", "https://api.mistral.ai/v1", "", "voxtral-mini-latest", java.util.List.of(), false));
 		voix.moteurs.putIfAbsent("groq", new Moteur("openai", "https://api.groq.com/openai/v1", "", "whisper-large-v3", java.util.List.of(), false));
 	}
@@ -89,6 +98,9 @@ public final class HameauConfig {
 		public java.util.List<String> voix = new java.util.ArrayList<>();
 		/** Le modèle de voix accepte-t-il une consigne de jeu (« instructions ») ? On lui décrit alors le personnage et son humeur. */
 		public boolean consignes;
+		/** Tarifs, en dollars par minute de son produit ou transcrit : ajoutés à la dépense suivie par les plafonds. */
+		public double prixVoixParMinute;
+		public double prixTranscriptionParMinute;
 
 		Moteur() {
 		}
@@ -151,7 +163,9 @@ public final class HameauConfig {
 		/** On entend un villageois jusqu'à cette distance, en blocs. */
 		public float distance = 24;
 		/** Au-delà, les villageois se taisent jusqu'au lendemain (le texte reste dans le chat). */
-		public int plafondCaracteresParJour = 5000;
+		public int plafondCaracteresParJour = 200000;
+		/** Une réplique qui ne s'adresse pas à un joueur n'est dite à voix haute que si un joueur est à moins de tant de blocs : on n'écoute pas tout le village bavarder. */
+		public float distanceBavardage = 8;
 		/** Les villageois entendent-ils ce que les joueurs disent au micro (Simple Voice Chat) près d'eux ? */
 		public boolean ecoute = true;
 		/** Secondes de parole transcrites par jour, au plus ; au-delà il faut de nouveau écrire dans le chat. */
@@ -173,8 +187,10 @@ public final class HameauConfig {
 		public boolean materiauxGratuits = true;
 		/** Rythme de pose : un bloc tous les N ticks (20 ticks = 1 seconde). */
 		public int ticksParBloc = 5;
-		public int largeurMax = 15;
-		public int hauteurMax = 10;
+		public int largeurMax = 21;
+		public int hauteurMax = 16;
+		/** Quand un joueur est près de l'emplacement choisi, le villageois le lui montre et attend son avis tant de secondes avant de commencer. 0 : il bâtit sans demander. */
+		public int apercuSecondes = 45;
 	}
 
 	public Autonomie autonomie = new Autonomie();
@@ -209,6 +225,17 @@ public final class HameauConfig {
 			}
 		}
 		instance.completer();
+		// Les tarifs suivent le profil : les corriger dans « modeles » puis /hameau recharger suffit.
+		Modele actif = instance.profil(instance.profil);
+		if (actif != null && actif.id.equals(instance.modele)) {
+			instance.prixEntreeParMillion = actif.prixEntree;
+			instance.prixSortieParMillion = actif.prixSortie;
+		}
+		Modele plans = instance.profil(instance.batir.profil);
+		if (plans != null && plans.id.equals(instance.batir.modele)) {
+			instance.batir.prixEntreeParMillion = plans.prixEntree;
+			instance.batir.prixSortieParMillion = plans.prixSortie;
+		}
 		// Un fichier d'avant les profils : on retrouve le profil d'après l'identifiant du modèle.
 		for (java.util.Map.Entry<String, Modele> e : instance.modeles.entrySet()) {
 			if (e.getValue().id.equals(instance.modele) && (instance.profil == null || instance.profil(instance.profil) == null || !instance.profil(instance.profil).id.equals(instance.modele))) {

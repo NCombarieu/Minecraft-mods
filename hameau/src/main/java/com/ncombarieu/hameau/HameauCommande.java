@@ -32,6 +32,9 @@ import net.minecraft.world.phys.AABB;
  * /hameau etat                  — dépense et activité (tout le monde)
  * /hameau univers [texte|rien]  — le décor propre au serveur, ajouté aux consignes de Claude (ops)
  * /hameau voix [prénom] [voix]  — état de la voix parlée, voix d'un villageois, ou changement de voix (ops)
+ * /hameau journal [tout|livre]  — ce qui s'est passé au village depuis la dernière lecture (tout le monde)
+ * /hameau chantier <valider|ici|annuler> <prénom> — avis sur l'emplacement d'un chantier balisé (tout le monde)
+ * /hameau ordres [prénom]       — menu d'ordres d'un villageois à son service (tout le monde)
  * /hameau village               — nom et culture du village où l'on se trouve (tout le monde)
  * /hameau personnalite <prénom> <demande> — réécrit son caractère selon la demande (ops)
  * /hameau renaitre <prénom|tous> — lui fait inventer une identité toute neuve par Claude (ops)
@@ -69,6 +72,16 @@ public final class HameauCommande {
 								.suggests((c, b) -> net.minecraft.commands.SharedSuggestionProvider.suggest(AIDES.stream().map(Aide::nom), b))
 								.executes(c -> aide(c, StringArgumentType.getString(c, "commande")))))
 				.then(Commands.literal("village").executes(HameauCommande::village))
+				.then(Commands.literal("journal").executes(c -> journal(c, ""))
+						.then(Commands.literal("tout").executes(c -> journal(c, "tout")))
+						.then(Commands.literal("livre").executes(c -> journal(c, "livre"))))
+				.then(Commands.literal("chantier")
+						.then(Commands.argument("choix", StringArgumentType.word())
+								.suggests((c, b) -> net.minecraft.commands.SharedSuggestionProvider.suggest(List.of("valider", "ici", "annuler"), b))
+								.then(Commands.argument("prenom", StringArgumentType.greedyString()).suggests(HameauCommande::prenoms).executes(HameauCommande::chantier))))
+				.then(Commands.literal("ordres").executes(c -> ordres(c, null))
+						.then(Commands.argument("prenom", StringArgumentType.greedyString()).suggests(HameauCommande::prenoms)
+								.executes(c -> ordres(c, StringArgumentType.getString(c, "prenom")))))
 				.then(Commands.literal("voix")
 						.executes(c -> voix(c, null))
 						.then(Commands.literal("synthese").requires(Commands.hasPermission(Commands.LEVEL_GAMEMASTERS))
@@ -162,6 +175,15 @@ public final class HameauCommande {
 					List.of("Pratique pour retrouver le prénom de quelqu'un avant de lui parler.")),
 			new Aide("village", "/hameau village", false, "Le nom du village où tu te trouves, et ce qui le rend différent des autres.",
 					List.of("Chaque village a sa culture, inventée par Claude : ses habitants en tirent leurs prénoms, leur parler, leurs coutumes.")),
+			new Aide("journal", "/hameau journal [tout|livre]", false, "Ce qui s'est passé au village depuis ta dernière lecture : chantiers, annonces, arrivées, morts, larcins.",
+					List.of("/hameau journal tout : tout ce que le village a retenu (80 faits au plus).", "/hameau journal livre : te donne le journal sous forme de livre.",
+							"Sans village à moins de 128 blocs : le journal du village le plus actif.")),
+			new Aide("chantier", "/hameau chantier <valider|ici|annuler> <prénom>", false, "Ton avis sur l'emplacement qu'un villageois te montre avant de bâtir.",
+					List.of("Quand un villageois s'apprête à bâtir près de toi, il balise l'emplacement de particules et attend 45 secondes : clique sur un des boutons du chat.",
+							"« ici » : place-toi au centre de l'endroit voulu, il bâtira autour de toi. Sans réponse, il commence à l'endroit balisé.")),
+			new Aide("ordres", "/hameau ordres [prénom]", false, "Ouvre le menu d'ordres d'un villageois à ton service.",
+					List.of("Plus simple : accroupi, main vide, clic droit sur lui. Chaque objet du menu est un ordre : suivre, rester, miner, couper, ranger…",
+							"Sans prénom : celui de tes serviteurs qui est le plus proche.")),
 			new Aide("etat", "/hameau etat", false, "Hameau tourne-t-il ? Dépense du jour et totale, modèle, villageois éveillés.",
 					List.of("« plafond de dépense atteint » : les villageois se taisent jusqu'à demain, ou jusqu'à ce qu'on relève le plafond dans config/hameau.json.")),
 			new Aide("ame", "/hameau ame [prénom]", true, "La fiche intime d'un villageois : caractère, histoire, liens, opinions, projet, souvenirs.",
@@ -190,7 +212,7 @@ public final class HameauCommande {
 							"« tous » : tous les villageois connus, au fur et à mesure qu'un joueur passe près d'eux. Un appel à Claude par villageois.")),
 			new Aide("recruter", "/hameau recruter <prénom> [joueur]", true, "Le met à ton service d'office : il te suit et exécute tes ordres sans discuter.",
 					List.of("Sans cette commande, tu peux aussi le convaincre toi-même en lui parlant : paie-le, promets, menace… c'est lui qui décide.",
-							"Une fois à ton service : « suis-moi », « reste ici », « mine-moi du fer », « coupe cet arbre », « range ça dans le coffre »…",
+							"Une fois à ton service : accroupi, main vide, clic droit sur lui ouvre le menu d'ordres (suivre, rester, miner, couper, ranger…). Tu peux aussi le lui dire de vive voix.",
 							"/hameau recruter Perrin Etiennoo le met au service d'un autre joueur. /hameau liberer Perrin le congédie.")),
 			new Aide("liberer", "/hameau liberer <prénom>", true, "Le congédie : il n'est plus au service de personne.", List.of()),
 			new Aide("presenter", "/hameau presenter <prénom>", true, "Fait d'un étranger un habitant du village où il se trouve.",
@@ -306,6 +328,94 @@ public final class HameauCommande {
 			Voix.donner(ame, timbre);
 		}
 		ligne(c, ame.voixNom == null ? ame.nom + " n'a pas encore de voix : elle sera choisie à sa première réplique entendue." : ame.nom + " parle avec la voix « " + ame.voixNom + " ».", ChatFormatting.YELLOW);
+		return 1;
+	}
+
+	private static int journal(final CommandContext<CommandSourceStack> c, final String mode) {
+		CommandSourceStack source = c.getSource();
+		Ames.Village village = Ames.villageVers((int) source.getPosition().x, (int) source.getPosition().z);
+		if (village == null || village.journal.isEmpty()) {
+			for (Ames.Village autre : Ames.villages()) {
+				if (!autre.journal.isEmpty() && (village == null || village.journal.isEmpty() || autre.inscrits > village.inscrits)) {
+					village = autre;
+				}
+			}
+		}
+		if (village == null || village.journal.isEmpty()) {
+			ligne(c, "Rien n'a encore été consigné : le journal se remplit au fil de la vie du village.", ChatFormatting.GRAY);
+			return 0;
+		}
+		String lecteur = source.getTextName();
+		String nom = village.nom != null ? village.nom : "village sans nom";
+		List<String> faits = village.journal;
+		if (mode.equals("livre") && source.getEntity() instanceof net.minecraft.server.level.ServerPlayer joueur) {
+			// Une page de livre tient environ 230 caractères.
+			List<net.minecraft.server.network.Filterable<Component>> pages = new ArrayList<>();
+			StringBuilder page = new StringBuilder();
+			for (String fait : faits.subList(Math.max(0, faits.size() - 60), faits.size())) {
+				if (page.length() + fait.length() > 230 && !page.isEmpty()) {
+					pages.add(net.minecraft.server.network.Filterable.passThrough(Component.literal(page.toString())));
+					page = new StringBuilder();
+				}
+				page.append(fait.length() > 230 ? fait.substring(0, 230) : fait).append("\n\n");
+			}
+			pages.add(net.minecraft.server.network.Filterable.passThrough(Component.literal(page.toString())));
+			net.minecraft.world.item.ItemStack livre = new net.minecraft.world.item.ItemStack(net.minecraft.world.item.Items.WRITTEN_BOOK);
+			String titre = "Journal de " + nom;
+			livre.set(net.minecraft.core.component.DataComponents.WRITTEN_BOOK_CONTENT, new net.minecraft.world.item.component.WrittenBookContent(
+					net.minecraft.server.network.Filterable.passThrough(titre.length() > 32 ? titre.substring(0, 32) : titre), "Le village", 0, pages, true));
+			if (!joueur.getInventory().add(livre)) {
+				joueur.spawnAtLocation(joueur.level(), livre);
+			}
+			ligne(c, "Le journal de " + nom + " est dans ton inventaire.", ChatFormatting.YELLOW);
+		} else {
+			int nouveaux = Math.min(faits.size(), village.inscrits - village.lus.getOrDefault(lecteur, 0));
+			int montres = mode.equals("tout") ? faits.size() : nouveaux > 0 ? Math.min(nouveaux, 20) : Math.min(8, faits.size());
+			ligne(c, "Journal de " + nom + " — " + (mode.equals("tout") ? "tout" : nouveaux > 0 ? nouveaux + " nouveauté" + (nouveaux > 1 ? "s" : "") : "rien de neuf, voici les derniers faits"), ChatFormatting.GOLD);
+			faits.subList(faits.size() - montres, faits.size()).forEach(fait -> ligne(c, fait, ChatFormatting.GRAY));
+		}
+		village.lus.put(lecteur, village.inscrits);
+		return 1;
+	}
+
+	private static int chantier(final CommandContext<CommandSourceStack> c) throws CommandSyntaxException {
+		if (!(c.getSource().getEntity() instanceof net.minecraft.server.level.ServerPlayer joueur)) {
+			ligne(c, "Seul un joueur peut donner son avis sur un chantier.", ChatFormatting.RED);
+			return 0;
+		}
+		Villager villageois = nomme(c, StringArgumentType.getString(c, "prenom"));
+		String choix = StringArgumentType.getString(c, "choix").toLowerCase();
+		if (joueur.distanceTo(villageois) > 48 || !List.of("valider", "ici", "annuler").contains(choix)) {
+			ligne(c, joueur.distanceTo(villageois) > 48 ? "Tu es trop loin de lui." : "Choix possibles : valider, ici, annuler.", ChatFormatting.RED);
+			return 0;
+		}
+		String reponse = Chantiers.decider(c.getSource().getServer(), villageois, Ames.de(villageois), choix, joueur);
+		ligne(c, reponse != null ? reponse : Ames.de(villageois).nom + " n'attend aucun avis en ce moment.", reponse != null ? ChatFormatting.YELLOW : ChatFormatting.GRAY);
+		return reponse != null ? 1 : 0;
+	}
+
+	private static int ordres(final CommandContext<CommandSourceStack> c, final String prenom) throws CommandSyntaxException {
+		if (!(c.getSource().getEntity() instanceof net.minecraft.server.level.ServerPlayer joueur)) {
+			ligne(c, "Seul un joueur peut ouvrir le menu d'ordres.", ChatFormatting.RED);
+			return 0;
+		}
+		String maitre = joueur.getName().getString();
+		Villager villageois = null;
+		if (prenom != null) {
+			villageois = nomme(c, prenom);
+		} else {
+			for (Villager candidat : alentour(c.getSource())) {
+				if (maitre.equals(Ames.de(candidat).maitre)) {
+					villageois = candidat;
+					break;
+				}
+			}
+		}
+		if (villageois == null || !maitre.equals(Ames.de(villageois).maitre)) {
+			ligne(c, villageois == null ? "Personne n'est à ton service dans les parages. /hameau help recruter" : Ames.de(villageois).nom + " n'est pas à ton service.", ChatFormatting.RED);
+			return 0;
+		}
+		MenuOrdres.ouvrir(joueur, villageois, Ames.de(villageois));
 		return 1;
 	}
 
@@ -497,6 +607,13 @@ public final class HameauCommande {
 		ligne(c, "Désire : " + ame.desir + ". Craint : " + ame.peur + ". Humeur : " + ame.humeur + ".", ChatFormatting.GRAY);
 		for (String lien : ame.liens) {
 			ligne(c, "♦ " + lien, ChatFormatting.GOLD);
+		}
+		if (ame.chantier != null) {
+			ligne(c, "Chantier : « " + ame.chantier.nom + " » en " + ame.chantier.x + " " + ame.chantier.y + " " + ame.chantier.z + ", reste " + ame.chantier.restants.size() + " blocs sur " + ame.chantier.total + ".", ChatFormatting.GOLD);
+		}
+		String activite = Actions.activite(villageois.getUUID());
+		if (activite != null) {
+			ligne(c, "En train de : " + activite, ChatFormatting.GRAY);
 		}
 		if (ame.projet != null) {
 			ligne(c, "Projet : " + ame.projet, ChatFormatting.GRAY);

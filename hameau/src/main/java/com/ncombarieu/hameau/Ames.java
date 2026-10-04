@@ -126,6 +126,11 @@ public final class Ames {
 		public int z;
 		/** Ce que tout le village sait : fonctions prises, règles, décisions communes. Écrit par les habitants eux-mêmes. */
 		public List<String> chronique = new ArrayList<>();
+		/** Ce qui s'est passé au village, dans l'ordre : chantiers, annonces, arrivées, morts, larcins… Les plus anciens faits s'effacent. */
+		public List<String> journal = new ArrayList<>();
+		/** Nombre de faits inscrits depuis toujours, et jusqu'où chaque joueur a lu. */
+		public int inscrits;
+		public Map<String, Integer> lus = new LinkedHashMap<>();
 		transient boolean enCours;
 		transient int echecs;
 	}
@@ -179,6 +184,32 @@ public final class Ames {
 		}
 		ame.village = village.id;
 		return village;
+	}
+
+	/** Inscrit un fait au journal du village de cette âme (rien pour un étranger sans village). */
+	static void journal(final Ame ame, final net.minecraft.server.level.ServerLevel level, final String fait) {
+		Village village = village(ame);
+		if (village == null) {
+			return;
+		}
+		String ligne = "(" + Perception.moment(level) + ") " + fait;
+		if (!village.journal.isEmpty() && village.journal.getLast().equals(ligne)) {
+			return;
+		}
+		village.journal.add(ligne);
+		village.inscrits++;
+		while (village.journal.size() > 80) {
+			village.journal.removeFirst();
+		}
+	}
+
+	/** Combien de faits ce joueur n'a pas encore lus, tous villages confondus. */
+	static int nouvelles(final String joueur) {
+		int nouvelles = 0;
+		for (Village village : VILLAGES) {
+			nouvelles += Math.min(village.journal.size(), village.inscrits - village.lus.getOrDefault(joueur, 0));
+		}
+		return nouvelles;
 	}
 
 	static String germes(final int combien) {
@@ -418,6 +449,12 @@ public final class Ames {
 					for (Village village : lue.villages) {
 						if (village.chronique == null) {
 							village.chronique = new ArrayList<>();
+						}
+						if (village.journal == null) {
+							village.journal = new ArrayList<>();
+						}
+						if (village.lus == null) {
+							village.lus = new LinkedHashMap<>();
 						}
 						VILLAGES.add(village);
 					}

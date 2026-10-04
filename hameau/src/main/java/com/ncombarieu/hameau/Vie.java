@@ -305,6 +305,9 @@ public final class Vie {
 			if (surDemande) {
 				ame.noter("Tu te sens changé, comme si tu devenais enfin toi-même.");
 			}
+			if (!surDemande && present != null && ame.recents.isEmpty() && ame.marquants.isEmpty()) {
+				Ames.journal(ame, (ServerLevel) present.level(), ame.nom + ", " + ame.metier + ", fait désormais partie du village.");
+			}
 			ame.ebauche = false;
 			ame.consigne = null;
 			ame.echecsNaissance = 0;
@@ -362,7 +365,11 @@ public final class Vie {
 		}
 		if (decision.role() != null) {
 			String role = decision.role().length() > 60 ? decision.role().substring(0, 60) : decision.role();
+			String avant = ame.role;
 			ame.role = Ames.simplifier(role).matches("aucun|rien|personne") ? null : role;
+			if (ame.role != null && !ame.role.equals(avant)) {
+				Ames.journal(ame, (ServerLevel) villageois.level(), ame.nom + " se dit désormais : " + ame.role + ".");
+			}
 		}
 		Ames.Village village = Ames.village(ame);
 		if (decision.annonce() != null && village != null && !ame.etranger && maintenant - ame.derniereAnnonce > 6000) {
@@ -373,6 +380,7 @@ public final class Vie {
 			while (village.chronique.size() > 8) {
 				village.chronique.removeFirst();
 			}
+			Ames.journal(ame, (ServerLevel) villageois.level(), ame.nom + " annonce : " + annonce);
 			Hameau.LOGGER.info("[{}] annonce au village : {}", ame.nom, annonce);
 		}
 		if (decision.sert() != null) {
@@ -418,6 +426,7 @@ public final class Vie {
 		ame.suit = true;
 		ame.retenir("(" + Perception.moment((ServerLevel) villageois.level()) + ") Tu es entré au service de " + maitre + ".");
 		temoins(villageois, null, ame.nom + " est entré au service de " + maitre + ".", false);
+		Ames.journal(ame, (ServerLevel) villageois.level(), ame.nom + " est entré au service de " + maitre + ".");
 		ServerPlayer joueur = villageois.level().getServer().getPlayerList().getPlayerByName(maitre);
 		if (joueur != null) {
 			joueur.sendSystemMessage(Component.literal(ame.nom + " est maintenant à ton service : il te suit et t'obéit. Dis-lui « reste ici » ou « suis-moi » ; /hameau liberer " + ame.nom + " pour le congédier.")
@@ -430,6 +439,7 @@ public final class Vie {
 		ame.maitre = null;
 		ame.suit = false;
 		ame.retenir("(" + Perception.moment((ServerLevel) villageois.level()) + ") Tu n'es plus au service de " + ancien + ".");
+		Ames.journal(ame, (ServerLevel) villageois.level(), ame.nom + " n'est plus au service de " + ancien + ".");
 		ServerPlayer joueur = villageois.level().getServer().getPlayerList().getPlayerByName(ancien);
 		if (joueur != null) {
 			joueur.sendSystemMessage(Component.literal(ame.nom + " n'est plus à ton service.").withStyle(ChatFormatting.GOLD));
@@ -490,7 +500,7 @@ public final class Vie {
 			}
 		}
 		if (!chuchote || vise instanceof ServerPlayer) {
-			Voix.parler(level.getServer(), villageois, ame, texte, chuchote ? vise.getUUID() : null);
+			Voix.parler(level.getServer(), villageois, ame, texte, chuchote ? vise.getUUID() : null, vise instanceof ServerPlayer);
 		}
 		ame.noter("Tu as " + (chuchote ? "chuchoté" : "dit") + (destinataire != null ? " à " + destinataire : "") + " : « " + texte + " »");
 		for (Villager autre : level.getEntitiesOfClass(Villager.class, villageois.getBoundingBox().inflate(12), e -> e != villageois && e.isAlive())) {

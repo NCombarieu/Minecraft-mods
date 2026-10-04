@@ -93,6 +93,10 @@ public final class Evenements {
 			Entity tueur = source.getEntity();
 			String recit = nom + " est mort" + (tueur != null ? ", tué par " + Perception.nom(tueur) : "") + " sous tes yeux.";
 			if (mort instanceof Villager villageois) {
+				Ame defunt = Ames.connue(villageois.getUUID());
+				if (defunt != null && mort.level() instanceof ServerLevel monde) {
+					Ames.journal(defunt, monde, defunt.nom + " est mort" + (tueur != null ? ", tué par " + Perception.nom(tueur) : "") + ".");
+				}
 				Ames.oublier(villageois.getUUID());
 				Actions.oublier(villageois.getUUID());
 				Bulles.effacer(villageois.getUUID());
@@ -134,7 +138,8 @@ public final class Evenements {
 		// Accroupi + clic droit avec un objet en main : on l'offre au villageois au lieu d'ouvrir le commerce.
 		UseEntityCallback.EVENT.register((joueur, level, main, entite, impact) -> {
 			Villager cache = Corps.villageoisDe(entite);
-			if (cache != null && !(joueur.isShiftKeyDown() && !joueur.getItemInHand(main).isEmpty())) {
+			boolean aSonService = cache != null && joueur.getName().getString().equals(Ames.de(cache).maitre);
+			if (cache != null && !(joueur.isShiftKeyDown() && (!joueur.getItemInHand(main).isEmpty() || aSonService))) {
 				// Clic sur le corps : c'est au villageois qu'on s'adresse (commerce).
 				return level.isClientSide() || joueur.isSpectator() ? InteractionResult.PASS : cache.interact(joueur, main, impact != null ? impact.getLocation() : cache.position());
 			}
@@ -143,6 +148,11 @@ public final class Evenements {
 				return InteractionResult.PASS;
 			}
 			ItemStack tenu = joueur.getItemInHand(main);
+			if (tenu.isEmpty() && !level.isClientSide() && joueur instanceof ServerPlayer maitre && maitre.getName().getString().equals(Ames.de(villageois).maitre)) {
+				// Accroupi, main vide, devant celui qui te sert : le menu d'ordres.
+				MenuOrdres.ouvrir(maitre, villageois, Ames.de(villageois));
+				return InteractionResult.SUCCESS;
+			}
 			if (tenu.isEmpty() || level.isClientSide()) {
 				return InteractionResult.PASS;
 			}

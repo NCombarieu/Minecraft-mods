@@ -315,16 +315,24 @@ public final class Cerveau {
 	}
 
 	private static final String ARCHITECTE = """
-			Tu dessines le plan d'une construction Minecraft qu'un villageois va bâtir bloc par bloc. Réponds UNIQUEMENT par un objet JSON, sans rien autour ni ``` :
-			{"nom":"nom court du bâtiment","palette":{"P":"minecraft:oak_planks","L":"minecraft:oak_log"},"couches":[["LPPPL","P...P"],["..."]]}
+			Tu dessines le plan d'une construction Minecraft qu'un villageois va bâtir bloc par bloc, sous les yeux des joueurs. Ils jugeront le résultat comme on juge une construction de joueur soigneux : silhouette, toit, détails. Une boîte aux murs plats sous un toit plat les déçoit ; prends la place qu'il faut pour faire quelque chose de beau.
 
-			Format : "couches" va de bas en haut. Chaque couche est une liste de lignes, du nord au sud ; chaque ligne est une chaîne dont chaque caractère est un bloc, d'ouest en est. "." = vide. Toutes les lignes ont la même longueur et toutes les couches le même nombre de lignes. Chaque caractère autre que "." doit figurer dans "palette".
-			Limites : %d blocs de côté au plus, %d couches au plus. Adapte la taille à ce qui est demandé : une cabane fait 5 à 7 blocs de côté, une maison 7 à 9, une villa, une grande bâtisse ou un monument 11 à 15. Si on demande grand, fais grand.
+			Réponds UNIQUEMENT par un objet JSON, sans rien autour ni ``` :
+			{"nom":"nom court du bâtiment","palette":{"P":"minecraft:oak_planks","L":"minecraft:oak_log[axis=y]","E":"minecraft:oak_stairs[facing=south,half=bottom]"},"couches":[["LPPPL","P...P"],["..."]]}
+
+			Format : "couches" va de bas en haut. Chaque couche est une liste de lignes, du nord au sud ; chaque ligne est une chaîne dont chaque caractère est un bloc, d'ouest en est. "." = vide. Toutes les lignes ont la même longueur et toutes les couches le même nombre de lignes. Chaque caractère autre que "." doit figurer dans "palette" ; lettres, chiffres et ponctuation conviennent, autant d'entrées qu'il en faut.
+			Limites : %d blocs de côté au plus, %d couches au plus. Adapte la taille à ce qui est demandé : une cabane fait 5 à 7 blocs de côté, une maison 7 à 11, une grande bâtisse, un château ou un monument 15 à 21. Si on demande grand, fais grand, et sers-toi de la hauteur.
 			Couche 0 : le sol du bâtiment, posé au niveau du terrain. Les murs commencent à la couche 1.
-			Blocs permis : blocs pleins et simples (planches, bûches, pierre, pierre taillée, briques, grès, laine, verre, terre cuite, terre, terre labourée, sable, gravier), dalles, vitres, barrières, portillons, portes, lanternes, torches posées au sol, bottes de foin, bibliothèques, établis, fleurs, feuillages, eau (minecraft:water, seulement dans un creux fermé). Interdits : escaliers, lits, coffres, lave, redstone.
-			"~" (sans entrée dans la palette) : creuser, c'est-à-dire vider cet emplacement. Pour un bassin, un puits ou une fosse, la couche 0 peut ainsi être creusée puis remplie.
-			Porte : place son caractère uniquement à la couche 1, dans un mur extérieur, et laisse "." juste au-dessus à la couche 2 : la moitié haute se pose toute seule.
-			S'il s'agit d'un bâtiment, il doit tenir debout et servir : murs fermés, intérieur vide et haut d'au moins 2 blocs, une porte, des fenêtres, un toit complet (plat, ou en gradins de planches et de dalles). Tout le reste (pont, enclos, potager, fontaine, statue, étal, monument, piège…) suit sa propre logique : dessine ce qui est demandé, pas une maison.
+
+			Blocs : tout bloc de construction ou de décor de Minecraft, écrit avec ses états entre crochets quand son orientation compte. La première ligne d'une couche est au nord, le premier caractère d'une ligne est à l'ouest.
+			- Escaliers : [facing=…,half=bottom|top]. "facing" est le côté haut de la marche : on monte en allant vers "facing". Pour un toit à deux pans, la rangée nord porte facing=south, la rangée sud facing=north, et chaque couche se resserre d'un bloc vers le faîte. half=top donne un encorbellement ou une corniche.
+			- Dalles : [type=bottom|top]. Bûches et piliers : [axis=x|y|z]. Trappes, échelles, lanternes suspendues ([hanging=true]), barrières, murets, vitres : comme dans le jeu ; barrières, murets et vitres se raccordent d'eux-mêmes.
+			- Portes : place la porte uniquement à la couche 1, dans un mur extérieur, avec [facing=…] vers l'intérieur si tu veux, et laisse "." juste au-dessus : la moitié haute se pose toute seule.
+			- Eau : minecraft:water, seulement dans un creux fermé. "~" (sans entrée dans la palette) vide un emplacement : pour un bassin, un puits ou une fosse, la couche 0 peut ainsi être creusée puis remplie.
+			- Interdits : lits, lave, feu, TNT, redstone active, pistons.
+
+			Ce qui fait une belle construction : un soubassement d'une autre matière que les murs ; des angles marqués par des piliers ; des murs animés par des fenêtres encadrées, des retraits ou des poutres ; un toit en pente qui déborde d'un bloc, fait d'escaliers et de dalles, avec pignons ; des volumes de hauteurs différentes (tour, aile, porche, cheminée) ; de la lumière (lanternes) ; un intérieur meublé (établi, bibliothèque, tonneau, coffre, tapis, escalier ou échelle vers l'étage). Deux ou trois matériaux accordés suffisent.
+			S'il s'agit d'un bâtiment, il doit tenir debout et servir : murs fermés, intérieur vide et haut d'au moins 3 blocs, une porte, des fenêtres, un toit complet. Tout le reste (pont, tour, enclos, fontaine, statue, monument, étal…) suit sa propre logique : dessine ce qui est demandé, reconnaissable à sa silhouette, pas une maison.
 			Le plan doit refléter la demande, mais aussi le goût, le métier et le caractère du bâtisseur.""";
 
 	/** Demande un plan de construction au modèle des plans ; en cas d'échec, une seconde tentative avec le modèle courant. */
@@ -340,7 +348,7 @@ public final class Cerveau {
 				// Hors Anthropic, on reprend l'effort réglé dans le profil : sans lui, un modèle qui raisonne peut tout dépenser à réfléchir et ne rien répondre.
 				// Hors Anthropic, un plan demande plus de réflexion qu'une réplique : à effort faible, ces modèles rendent des bâtisses maigres.
 				String effort = anthropic ? (config.batir.modele.contains("haiku") ? "" : "low") : config.batir.effort == null ? "" : config.batir.effort;
-				Reponse reponse = completer(c, config.batir.url, config.batir.profil, config.batir.modele, effort, 9000L, consignes, demande, 240);
+				Reponse reponse = completer(c, config.batir.url, config.batir.profil, config.batir.modele, effort, 20000L, consignes, demande, 300);
 				Plan plan = lirePlan(reponse, false, 0, 0);
 				if (plan != null) {
 					return plan;
@@ -352,7 +360,7 @@ public final class Cerveau {
 				Hameau.LOGGER.warn("Hameau : {} n'a pas pu dessiner le plan ({}), nouvel essai avec {}", config.batir.modele, e.toString(), config.modele);
 			}
 			boolean secoursAnthropic = config.url == null || config.url.isBlank();
-			return lirePlan(completer(c, config.url, config.profil, config.modele, secoursAnthropic ? "" : config.batir.effort, secoursAnthropic ? 4000L : 9000L, consignes, demande, 240), true, perdusEntree, perdusSortie);
+			return lirePlan(completer(c, config.url, config.profil, config.modele, secoursAnthropic ? "" : config.batir.effort, secoursAnthropic ? 8000L : 20000L, consignes, demande, 300), true, perdusEntree, perdusSortie);
 		}, FILS);
 	}
 
