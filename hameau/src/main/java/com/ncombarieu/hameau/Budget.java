@@ -1,0 +1,49 @@
+package com.ncombarieu.hameau;
+
+import java.time.LocalDate;
+
+/** Suivi de la dépense API, d'après les tokens réellement facturés. */
+public final class Budget {
+	public double totalUsd;
+	public String jour = "";
+	public double jourUsd;
+	public long appels;
+	public long tokensEntree;
+	public long tokensSortie;
+
+	private void changerDeJour() {
+		String aujourdhui = LocalDate.now().toString();
+		if (!aujourdhui.equals(jour)) {
+			jour = aujourdhui;
+			jourUsd = 0;
+		}
+	}
+
+	public boolean autorise() {
+		changerDeJour();
+		HameauConfig c = HameauConfig.get();
+		return jourUsd < c.plafondJournalierUsd && totalUsd < c.plafondTotalUsd;
+	}
+
+	public void enregistrer(final long entree, final long sortie) {
+		HameauConfig c = HameauConfig.get();
+		enregistrer(entree, sortie, c.prixEntreeParMillion, c.prixSortieParMillion);
+	}
+
+	public void enregistrer(final long entree, final long sortie, final double prixEntree, final double prixSortie) {
+		changerDeJour();
+		double cout = entree * prixEntree / 1e6 + sortie * prixSortie / 1e6;
+		totalUsd += cout;
+		jourUsd += cout;
+		appels++;
+		tokensEntree += entree;
+		tokensSortie += sortie;
+	}
+
+	public String resume() {
+		changerDeJour();
+		HameauConfig c = HameauConfig.get();
+		return String.format("%d appels, %.4f $ aujourd'hui (plafond %.2f), %.4f $ au total (plafond %.2f)",
+				appels, jourUsd, c.plafondJournalierUsd, totalUsd, c.plafondTotalUsd);
+	}
+}

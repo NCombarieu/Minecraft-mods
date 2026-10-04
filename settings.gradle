@@ -14,3 +14,6 @@ rootProject.name = 'premiermod'
 
 // Deuxième mod : Chronomancie (dossier chronomancie/)
 include 'chronomancie'
+
+// Troisième mod : Hameau, les villageois animés par Claude (dossier hameau/)
+include 'hameau'
