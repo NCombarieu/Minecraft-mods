@@ -25,7 +25,6 @@ import net.fabricmc.loader.api.FabricLoader;
 
 /** L'appel à Claude : une fiche de situation en entrée, une décision en sortie. */
 public final class Cerveau {
-	private static final Path FICHIER_CLE = FabricLoader.getInstance().getConfigDir().resolve("hameau-cle.txt");
 	private static final ExecutorService FILS = Executors.newThreadPerTaskExecutor(Thread.ofVirtual().name("hameau-", 0).factory());
 
 	private static AnthropicClient client;
@@ -57,29 +56,90 @@ public final class Cerveau {
 	public record Fondation(String nom, String culture, long tokensEntree, long tokensSortie) {
 	}
 
+	/** Le modèle des réflexions est-il joignable (clé présente) ? */
 	public static boolean pret() {
-		return client != null;
+		HameauConfig config = HameauConfig.get();
+		return config.url == null || config.url.isBlank() ? client != null : Cles.local(config.url) || Cles.lire(config.profil) != null;
 	}
 
-	/** La clé vient de la variable ANTHROPIC_API_KEY, sinon de config/hameau-cle.txt. */
+	/** Relit les textes et la clé Anthropic (les clés des autres services sont lues à chaque appel, dans config/hameau-cles/). */
 	public static void demarrer() {
 		Textes.charger();
 		systeme = consignes();
-		String cle = System.getenv("ANTHROPIC_API_KEY");
-		if (cle == null || cle.isBlank()) {
-			try {
-				cle = Files.exists(FICHIER_CLE) ? Files.readString(FICHIER_CLE, StandardCharsets.UTF_8).trim() : null;
-			} catch (IOException e) {
-				Hameau.LOGGER.error("Impossible de lire {}", FICHIER_CLE, e);
+		String cle = Cles.lire("anthropic");
+		client = cle == null ? null : AnthropicOkHttpClient.builder().apiKey(cle).maxRetries(1).timeout(Duration.ofSeconds(40)).build();
+		if (!pret()) {
+			Hameau.LOGGER.warn("Hameau : aucune clé API pour le modèle « {} ». Les villageois resteront muets.", HameauConfig.get().profil);
+		}
+	}
+
+	/** Ce qu'un modèle a répondu, quel que soit le service. */
+	record Reponse(String texte, long entree, long sortie) {
+	}
+
+	private static final java.net.http.HttpClient HTTP = java.net.http.HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(10)).build();
+
+	/**
+	 * Un appel à un modèle : par le SDK d'Anthropic si « url » est vide, sinon par l'API « chat/completions » que partagent
+	 * Mistral, Qwen, OpenAI, OpenRouter, Groq, Ollama…
+	 */
+	private static Reponse completer(final AnthropicClient c, final String url, final String profil, final String modele, final String effort, final long maxTokens,
+			final String consignes, final String demande) {
+		if (url == null || url.isBlank()) {
+			if (c == null) {
+				throw new IllegalStateException("pas de clé Anthropic");
 			}
+			Thread.currentThread().setContextClassLoader(Cerveau.class.getClassLoader());
+			MessageCreateParams.Builder requete = MessageCreateParams.builder().model(modele).maxTokens(maxTokens).system(consignes).addUserMessage(demande);
+			if (effort != null && !effort.isBlank()) {
+				requete.outputConfig(com.anthropic.models.messages.OutputConfig.builder().effort(switch (effort.toLowerCase()) {
+					case "high" -> com.anthropic.models.messages.OutputConfig.Effort.HIGH;
+					case "medium" -> com.anthropic.models.messages.OutputConfig.Effort.MEDIUM;
+					default -> com.anthropic.models.messages.OutputConfig.Effort.LOW;
+				}).build());
+			}
+			Message reponse = c.messages().create(requete.build());
+			String texte = reponse.content().stream().flatMap(bloc -> bloc.text().stream()).map(TextBlock::text).collect(Collectors.joining());
+			return new Reponse(texte, reponse.usage().inputTokens(), reponse.usage().outputTokens());
 		}
-		if (cle == null || cle.isBlank()) {
-			client = null;
-			Hameau.LOGGER.warn("Hameau : aucune clé API (ANTHROPIC_API_KEY ou {}). Les villageois resteront muets.", FICHIER_CLE);
-			return;
+		String cle = Cles.lire(profil);
+		if (cle == null && !Cles.local(url)) {
+			throw new IllegalStateException("pas de clé pour « " + profil + " » (config/hameau-cles/" + profil + ".txt)");
 		}
-		client = AnthropicOkHttpClient.builder().apiKey(cle).maxRetries(1).timeout(Duration.ofSeconds(40)).build();
-		systeme = consignes();
+		JsonObject corps = new JsonObject();
+		corps.addProperty("model", modele);
+		corps.addProperty("max_tokens", maxTokens);
+		com.google.gson.JsonArray messages = new com.google.gson.JsonArray();
+		for (String[] message : new String[][] {{"system", consignes}, {"user", demande}}) {
+			JsonObject m = new JsonObject();
+			m.addProperty("role", message[0]);
+			m.addProperty("content", message[1]);
+			messages.add(m);
+		}
+		corps.add("messages", messages);
+		java.net.http.HttpRequest.Builder requete = java.net.http.HttpRequest.newBuilder(java.net.URI.create(url.replaceAll("/+$", "") + "/chat/completions"))
+				.header("Content-Type", "application/json").timeout(Duration.ofSeconds(60))
+				.POST(java.net.http.HttpRequest.BodyPublishers.ofString(corps.toString(), StandardCharsets.UTF_8));
+		if (cle != null) {
+			requete.header("Authorization", "Bearer " + cle);
+		}
+		try {
+			java.net.http.HttpResponse<String> reponse = HTTP.send(requete.build(), java.net.http.HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
+			if (reponse.statusCode() != 200) {
+				throw new IllegalStateException(profil + " a répondu " + reponse.statusCode() + " : " + (reponse.body().length() > 300 ? reponse.body().substring(0, 300) : reponse.body()));
+			}
+			JsonObject json = JsonParser.parseString(reponse.body()).getAsJsonObject();
+			JsonElement contenu = json.getAsJsonArray("choices").get(0).getAsJsonObject().getAsJsonObject("message").get("content");
+			// Certains modèles réfléchissent à voix haute avant de répondre : on ne garde que la réponse.
+			String texte = (contenu == null || contenu.isJsonNull() ? "" : contenu.getAsString()).replaceAll("(?s)<think>.*?</think>", "");
+			JsonObject usage = json.has("usage") && json.get("usage").isJsonObject() ? json.getAsJsonObject("usage") : new JsonObject();
+			return new Reponse(texte, usage.has("prompt_tokens") ? usage.get("prompt_tokens").getAsLong() : 0, usage.has("completion_tokens") ? usage.get("completion_tokens").getAsLong() : 0);
+		} catch (IOException e) {
+			throw new java.io.UncheckedIOException(e);
+		} catch (InterruptedException e) {
+			Thread.currentThread().interrupt();
+			throw new IllegalStateException(e);
+		}
 	}
 
 	/** À rappeler quand un texte de Textes change. */
@@ -149,25 +209,8 @@ public final class Cerveau {
 		AnthropicClient c = client;
 		String consignes = systeme;
 		return CompletableFuture.supplyAsync(() -> {
-			Thread.currentThread().setContextClassLoader(Cerveau.class.getClassLoader());
-			MessageCreateParams.Builder requete = MessageCreateParams.builder()
-					.model(config.modele)
-					.maxTokens(config.maxTokensReponse)
-					.system(consignes)
-					.addUserMessage(fiche);
-			if (config.effort != null && !config.effort.isBlank()) {
-				requete.outputConfig(com.anthropic.models.messages.OutputConfig.builder().effort(switch (config.effort.toLowerCase()) {
-					case "high" -> com.anthropic.models.messages.OutputConfig.Effort.HIGH;
-					case "medium" -> com.anthropic.models.messages.OutputConfig.Effort.MEDIUM;
-					default -> com.anthropic.models.messages.OutputConfig.Effort.LOW;
-				}).build());
-			}
-			Message reponse = c.messages().create(requete.build());
-			String texte = reponse.content().stream()
-					.flatMap(bloc -> bloc.text().stream())
-					.map(TextBlock::text)
-					.collect(Collectors.joining());
-			return lire(texte, reponse.usage().inputTokens(), reponse.usage().outputTokens());
+			Reponse reponse = completer(c, config.url, config.profil, config.modele, config.effort, config.maxTokensReponse, consignes, fiche);
+			return lire(reponse.texte(), reponse.entree(), reponse.sortie());
 		}, FILS);
 	}
 
@@ -194,22 +237,9 @@ public final class Cerveau {
 
 			"culture" : quatre ou cinq phrases en français, qui disent de quoi vit le village et ce dont il est fier, une coutume ou une croyance bien à lui, comment sonnent les prénoms d'ici (décris le style, sans donner de liste), une façon de parler commune (tournures, salutations, jurons), et l'affaire dont tout le monde parle en ce moment. Rien qui ne puisse exister dans Minecraft.""";
 
-	/** Un appel simple, avec le modèle des réflexions : consignes, demande, texte en retour. */
-	private static Message appeler(final AnthropicClient c, final HameauConfig config, final String consignes, final String demande) {
-		Thread.currentThread().setContextClassLoader(Cerveau.class.getClassLoader());
-		MessageCreateParams.Builder requete = MessageCreateParams.builder()
-				.model(config.modele)
-				.maxTokens(Math.max(config.maxTokensReponse, 1200))
-				.system(consignes)
-				.addUserMessage(demande);
-		if (config.effort != null && !config.effort.isBlank()) {
-			requete.outputConfig(com.anthropic.models.messages.OutputConfig.builder().effort(com.anthropic.models.messages.OutputConfig.Effort.LOW).build());
-		}
-		return c.messages().create(requete.build());
-	}
-
-	private static String texte(final Message reponse) {
-		return reponse.content().stream().flatMap(bloc -> bloc.text().stream()).map(TextBlock::text).collect(Collectors.joining());
+	/** Un appel simple, avec le modèle des réflexions. */
+	private static Reponse appeler(final AnthropicClient c, final HameauConfig config, final String consignes, final String demande) {
+		return completer(c, config.url, config.profil, config.modele, config.effort == null || config.effort.isBlank() ? "" : "low", Math.max(config.maxTokensReponse, 1200), consignes, demande);
 	}
 
 	/** Invente (ou réinvente) la personnalité d'un villageois. */
@@ -218,8 +248,8 @@ public final class Cerveau {
 		AnthropicClient c = client;
 		String consignes = Textes.naissance + Textes.decor() + NAISSANCE;
 		return CompletableFuture.supplyAsync(() -> {
-			Message reponse = appeler(c, config, consignes, demande);
-			JsonObject json = extraire(texte(reponse));
+			Reponse reponse = appeler(c, config, consignes, demande);
+			JsonObject json = extraire(reponse.texte());
 			java.util.List<String> traits = new java.util.ArrayList<>();
 			if (json.has("traits") && json.get("traits").isJsonArray()) {
 				for (JsonElement trait : json.getAsJsonArray("traits")) {
@@ -232,7 +262,7 @@ public final class Cerveau {
 			Boolean femme = json.has("femme") && json.get("femme").isJsonPrimitive() && json.getAsJsonPrimitive("femme").isBoolean() ? json.get("femme").getAsBoolean() : null;
 			return new Persona(chaine(json, "nom"), femme, traits, chaine(json, "manie"), chaine(json, "parler"), chaine(json, "desir"), chaine(json, "peur"), chaine(json, "histoire"), chaine(json, "voix"),
 					chaine(lien, "avec"), chaine(lien, "pour_toi"), chaine(lien, "pour_lui"), entier(lien, "opinion"), entier(lien, "opinion_de_lui"),
-					reponse.usage().inputTokens(), reponse.usage().outputTokens());
+					reponse.entree(), reponse.sortie());
 		}, FILS);
 	}
 
@@ -242,9 +272,9 @@ public final class Cerveau {
 		AnthropicClient c = client;
 		String consignes = Textes.village + Textes.decor() + FONDATION;
 		return CompletableFuture.supplyAsync(() -> {
-			Message reponse = appeler(c, config, consignes, demande);
-			JsonObject json = extraire(texte(reponse));
-			return new Fondation(chaine(json, "nom"), chaine(json, "culture"), reponse.usage().inputTokens(), reponse.usage().outputTokens());
+			Reponse reponse = appeler(c, config, consignes, demande);
+			JsonObject json = extraire(reponse.texte());
+			return new Fondation(chaine(json, "nom"), chaine(json, "culture"), reponse.entree(), reponse.sortie());
 		}, FILS);
 	}
 
@@ -271,41 +301,27 @@ public final class Cerveau {
 		AnthropicClient c = client;
 		String consignes = String.format(ARCHITECTE, config.batir.largeurMax, config.batir.hauteurMax);
 		return CompletableFuture.supplyAsync(() -> {
-			Thread.currentThread().setContextClassLoader(Cerveau.class.getClassLoader());
 			long perdusEntree = 0;
 			long perdusSortie = 0;
 			try {
-				MessageCreateParams.Builder requete = MessageCreateParams.builder()
-						.model(config.batir.modele)
-						.maxTokens(9000L)
-						.system(consignes)
-						.addUserMessage(demande);
-				if (!config.batir.modele.contains("haiku")) {
-					requete.outputConfig(com.anthropic.models.messages.OutputConfig.builder().effort(com.anthropic.models.messages.OutputConfig.Effort.LOW).build());
-				}
-				Message reponse = c.messages().create(requete.build());
+				boolean anthropic = config.batir.url == null || config.batir.url.isBlank();
+				Reponse reponse = completer(c, config.batir.url, config.batir.profil, config.batir.modele, anthropic && !config.batir.modele.contains("haiku") ? "low" : "", 9000L, consignes, demande);
 				Plan plan = lirePlan(reponse, false, 0, 0);
 				if (plan != null) {
 					return plan;
 				}
-				perdusEntree = reponse.usage().inputTokens();
-				perdusSortie = reponse.usage().outputTokens();
+				perdusEntree = reponse.entree();
+				perdusSortie = reponse.sortie();
 				Hameau.LOGGER.warn("Hameau : plan inutilisable de {}, nouvel essai avec {}", config.batir.modele, config.modele);
 			} catch (RuntimeException e) {
 				Hameau.LOGGER.warn("Hameau : {} n'a pas pu dessiner le plan ({}), nouvel essai avec {}", config.batir.modele, e.toString(), config.modele);
 			}
-			Message reponse = c.messages().create(MessageCreateParams.builder()
-					.model(config.modele)
-					.maxTokens(4000L)
-					.system(consignes)
-					.addUserMessage(demande)
-					.build());
-			return lirePlan(reponse, true, perdusEntree, perdusSortie);
+			return lirePlan(completer(c, config.url, config.profil, config.modele, "", 4000L, consignes, demande), true, perdusEntree, perdusSortie);
 		}, FILS);
 	}
 
-	private static Plan lirePlan(final Message reponse, final boolean secours, final long perdusEntree, final long perdusSortie) {
-		String texte = reponse.content().stream().flatMap(bloc -> bloc.text().stream()).map(TextBlock::text).collect(Collectors.joining());
+	private static Plan lirePlan(final Reponse reponse, final boolean secours, final long perdusEntree, final long perdusSortie) {
+		String texte = reponse.texte();
 		try {
 			JsonObject json = extraire(texte);
 			Map<String, String> palette = new LinkedHashMap<>();
@@ -321,7 +337,7 @@ public final class Cerveau {
 				couches.add(lignes);
 			}
 			String nom = chaine(json, "nom");
-			return couches.isEmpty() ? null : new Plan(nom == null ? "construction" : nom, palette, couches, reponse.usage().inputTokens(), reponse.usage().outputTokens(), secours, perdusEntree, perdusSortie);
+			return couches.isEmpty() ? null : new Plan(nom == null ? "construction" : nom, palette, couches, reponse.entree(), reponse.sortie(), secours, perdusEntree, perdusSortie);
 		} catch (RuntimeException e) {
 			Hameau.LOGGER.warn("Hameau : plan illisible ({}) : {}", e.toString(), texte.length() > 1500 ? texte.substring(0, 700) + " […] " + texte.substring(texte.length() - 700) : texte);
 			return null;

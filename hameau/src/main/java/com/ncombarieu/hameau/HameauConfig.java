@@ -19,6 +19,89 @@ public final class HameauConfig {
 	private static HameauConfig instance = new HameauConfig();
 
 	public String modele = "claude-haiku-4-5";
+	/** D'où vient ce modèle : le nom du profil choisi par /hameau modele, et l'adresse de son API (vide = Anthropic). Réglés par la commande. */
+	public String profil = "haiku";
+	public String url = "";
+
+	/**
+	 * Les modèles entre lesquels /hameau modele bascule. « url » vide : Anthropic. Sinon l'adresse d'une API compatible OpenAI
+	 * (Mistral, Qwen, OpenAI, OpenRouter, Groq, Ollama…). La clé de chaque profil se met dans config/hameau-cles/&lt;nom&gt;.txt.
+	 * Les prix (dollars par million de tokens) servent au suivi de la dépense : à renseigner pour que les plafonds aient un sens.
+	 */
+	public java.util.Map<String, Modele> modeles = new java.util.LinkedHashMap<>();
+
+	public static final class Modele {
+		public String url = "";
+		public String id = "";
+		public String effort = "";
+		public int maxTokens = 1200;
+		public double prixEntree;
+		public double prixSortie;
+
+		Modele() {
+		}
+
+		Modele(final String url, final String id, final String effort, final int maxTokens, final double prixEntree, final double prixSortie) {
+			this.url = url;
+			this.id = id;
+			this.effort = effort;
+			this.maxTokens = maxTokens;
+			this.prixEntree = prixEntree;
+			this.prixSortie = prixSortie;
+		}
+	}
+
+	/** Ajoute les profils fournis d'origine s'ils manquent : on peut les modifier ou en ajouter d'autres dans le fichier. */
+	private void completer() {
+		if (modeles == null) {
+			modeles = new java.util.LinkedHashMap<>();
+		}
+		modeles.putIfAbsent("haiku", new Modele("", "claude-haiku-4-5", "", 450, 1.0, 5.0));
+		modeles.putIfAbsent("sonnet", new Modele("", "claude-sonnet-5-5", "low", 2500, 2.0, 10.0));
+		modeles.putIfAbsent("opus", new Modele("", "claude-opus-5-5", "low", 2500, 4.0, 20.0));
+		modeles.putIfAbsent("mistral", new Modele("https://api.mistral.ai/v1", "mistral-small-latest", "", 1200, 0, 0));
+		modeles.putIfAbsent("mistral-large", new Modele("https://api.mistral.ai/v1", "mistral-large-latest", "", 1200, 0, 0));
+		modeles.putIfAbsent("qwen", new Modele("https://dashscope-intl.aliyuncs.com/compatible-mode/v1", "qwen-plus", "", 1200, 0, 0));
+		modeles.putIfAbsent("openai", new Modele("https://api.openai.com/v1", "gpt-4o-mini", "", 1200, 0, 0));
+		modeles.putIfAbsent("openrouter", new Modele("https://openrouter.ai/api/v1", "", "", 1200, 0, 0));
+		if (voix == null) {
+			voix = new Voix();
+		}
+		if (voix.moteurs == null) {
+			voix.moteurs = new java.util.LinkedHashMap<>();
+		}
+		voix.moteurs.putIfAbsent("elevenlabs", new Moteur("elevenlabs", "https://api.elevenlabs.io/v1", "eleven_flash_v2_5", "scribe_v1", java.util.List.of(), false));
+		voix.moteurs.putIfAbsent("openai", new Moteur("openai", "https://api.openai.com/v1", "gpt-4o-mini-tts", "gpt-4o-mini-transcribe",
+				java.util.List.of("alloy:n", "ash:m", "ballad:m", "coral:f", "echo:m", "fable:n", "nova:f", "onyx:m", "sage:f", "shimmer:f"), true));
+		voix.moteurs.putIfAbsent("mistral", new Moteur("openai", "https://api.mistral.ai/v1", "", "voxtral-mini-latest", java.util.List.of(), false));
+		voix.moteurs.putIfAbsent("groq", new Moteur("openai", "https://api.groq.com/openai/v1", "", "whisper-large-v3", java.util.List.of(), false));
+	}
+
+	/** Un service de voix : « elevenlabs », ou « openai » pour toute API compatible OpenAI (/audio/speech, /audio/transcriptions). */
+	public static final class Moteur {
+		public String type = "openai";
+		public String url = "";
+		/** Modèle de synthèse vocale ; vide si ce service n'en fait pas. */
+		public String modeleVoix = "";
+		/** Modèle de transcription ; vide si ce service n'en fait pas. */
+		public String modeleTranscription = "";
+		/** Les voix du service, pour le type « openai » : « nom:f », « nom:m » ou « nom:n » (femme, homme, neutre). ElevenLabs fournit sa liste lui-même. */
+		public java.util.List<String> voix = new java.util.ArrayList<>();
+		/** Le modèle de voix accepte-t-il une consigne de jeu (« instructions ») ? On lui décrit alors le personnage et son humeur. */
+		public boolean consignes;
+
+		Moteur() {
+		}
+
+		Moteur(final String type, final String url, final String modeleVoix, final String modeleTranscription, final java.util.List<String> voix, final boolean consignes) {
+			this.type = type;
+			this.url = url;
+			this.modeleVoix = modeleVoix;
+			this.modeleTranscription = modeleTranscription;
+			this.voix = new java.util.ArrayList<>(voix);
+			this.consignes = consignes;
+		}
+	}
 	/** Effort de réflexion : "low", "medium" ou "high". À laisser vide pour Haiku, qui ne l'accepte pas ; "low" conseillé pour Sonnet et Opus. */
 	public String effort = "";
 	/** Tarifs du modèle, en dollars par million de tokens : servent à suivre la dépense. */
@@ -60,8 +143,11 @@ public final class HameauConfig {
 	/** Voix parlée des villageois : demande le mod Simple Voice Chat (serveur et joueurs) et une clé ElevenLabs dans config/hameau-voix-cle.txt. */
 	public static final class Voix {
 		public boolean actif = true;
-		/** Modèle ElevenLabs : eleven_flash_v2_5 (rapide, économe), eleven_multilingual_v2 (plus naturel, deux fois plus cher). */
-		public String modele = "eleven_flash_v2_5";
+		/** Quel moteur (voir « moteurs ») fait parler les villageois, et lequel transcrit le micro des joueurs. Réglés par /hameau voix synthese|transcription. */
+		public String synthese = "elevenlabs";
+		public String transcription = "elevenlabs";
+		/** Les services de voix disponibles. La clé de chacun se met dans config/hameau-cles/&lt;nom&gt;.txt. */
+		public java.util.Map<String, Moteur> moteurs = new java.util.LinkedHashMap<>();
 		/** On entend un villageois jusqu'à cette distance, en blocs. */
 		public float distance = 24;
 		/** Au-delà, les villageois se taisent jusqu'au lendemain (le texte reste dans le chat). */
@@ -77,6 +163,8 @@ public final class HameauConfig {
 	public static final class Batir {
 		/** Modèle qui dessine les plans de construction (un appel par bâtiment), et ses tarifs par million de tokens. */
 		public String modele = "claude-sonnet-5-5";
+		public String profil = "sonnet";
+		public String url = "";
 		public double prixEntreeParMillion = 2.0;
 		public double prixSortieParMillion = 10.0;
 		/** Faux : le bâtisseur doit avoir chaque bloc en poche (il débite ses bûches en planches) et s'arrête quand il lui en manque. */
@@ -118,47 +206,58 @@ public final class HameauConfig {
 				Hameau.LOGGER.error("Impossible de lire {}, réglages par défaut utilisés", FICHIER, e);
 			}
 		}
+		instance.completer();
+		// Un fichier d'avant les profils : on retrouve le profil d'après l'identifiant du modèle.
+		for (java.util.Map.Entry<String, Modele> e : instance.modeles.entrySet()) {
+			if (e.getValue().id.equals(instance.modele) && (instance.profil == null || instance.profil(instance.profil) == null || !instance.profil(instance.profil).id.equals(instance.modele))) {
+				instance.profil = e.getKey();
+				instance.url = e.getValue().url;
+			}
+			if (e.getValue().id.equals(instance.batir.modele) && (instance.batir.profil == null || instance.profil(instance.batir.profil) == null || !instance.profil(instance.batir.profil).id.equals(instance.batir.modele))) {
+				instance.batir.profil = e.getKey();
+				instance.batir.url = e.getValue().url;
+			}
+		}
 		sauvegarder();
 	}
 
-	/** Règle d'un coup le modèle des réflexions, avec l'effort, la marge de réponse et les tarifs qui lui conviennent. */
-	public boolean choisirModele(final String nom) {
-		switch (nom.toLowerCase()) {
-			case "haiku" -> regler("claude-haiku-4-5", "", 450, 1.0, 5.0);
-			case "sonnet" -> regler("claude-sonnet-5-5", "low", 2500, 2.0, 10.0);
-			case "opus" -> regler("claude-opus-5-5", "low", 2500, 4.0, 20.0);
-			default -> {
-				return false;
+	private Modele profil(final String nom) {
+		for (java.util.Map.Entry<String, Modele> e : modeles.entrySet()) {
+			if (e.getKey().equalsIgnoreCase(nom)) {
+				return e.getValue();
 			}
 		}
-		return true;
+		return null;
 	}
 
-	private void regler(final String id, final String niveau, final int marge, final double entree, final double sortie) {
-		modele = id;
-		effort = niveau;
-		maxTokensReponse = marge;
-		prixEntreeParMillion = entree;
-		prixSortieParMillion = sortie;
+	/** Règle d'un coup le modèle des réflexions d'après un profil : adresse, identifiant, effort, marge de réponse, tarifs. */
+	public boolean choisirModele(final String nom) {
+		Modele choisi = profil(nom);
+		if (choisi == null || choisi.id == null || choisi.id.isBlank()) {
+			return false;
+		}
+		profil = nom.toLowerCase();
+		url = choisi.url == null ? "" : choisi.url;
+		modele = choisi.id;
+		effort = choisi.effort == null ? "" : choisi.effort;
+		maxTokensReponse = choisi.maxTokens;
+		prixEntreeParMillion = choisi.prixEntree;
+		prixSortieParMillion = choisi.prixSortie;
+		return true;
 	}
 
 	/** Même choix pour le modèle qui dessine les plans de construction. */
 	public boolean choisirModelePlans(final String nom) {
-		switch (nom.toLowerCase()) {
-			case "haiku" -> reglerPlans("claude-haiku-4-5", 1.0, 5.0);
-			case "sonnet" -> reglerPlans("claude-sonnet-5-5", 2.0, 10.0);
-			case "opus" -> reglerPlans("claude-opus-5-5", 4.0, 20.0);
-			default -> {
-				return false;
-			}
+		Modele choisi = profil(nom);
+		if (choisi == null || choisi.id == null || choisi.id.isBlank()) {
+			return false;
 		}
+		batir.profil = nom.toLowerCase();
+		batir.url = choisi.url == null ? "" : choisi.url;
+		batir.modele = choisi.id;
+		batir.prixEntreeParMillion = choisi.prixEntree;
+		batir.prixSortieParMillion = choisi.prixSortie;
 		return true;
-	}
-
-	private void reglerPlans(final String id, final double entree, final double sortie) {
-		batir.modele = id;
-		batir.prixEntreeParMillion = entree;
-		batir.prixSortieParMillion = sortie;
 	}
 
 	public static void sauvegarder() {

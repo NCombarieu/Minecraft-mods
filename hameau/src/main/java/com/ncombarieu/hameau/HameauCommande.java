@@ -71,6 +71,17 @@ public final class HameauCommande {
 				.then(Commands.literal("village").executes(HameauCommande::village))
 				.then(Commands.literal("voix")
 						.executes(c -> voix(c, null))
+						.then(Commands.literal("synthese").requires(Commands.hasPermission(Commands.LEVEL_GAMEMASTERS))
+								.then(Commands.argument("moteur", StringArgumentType.word())
+										.suggests((c, b) -> net.minecraft.commands.SharedSuggestionProvider.suggest(HameauConfig.get().voix.moteurs.keySet(), b))
+										.executes(c -> moteur(c, true, StringArgumentType.getString(c, "moteur")))))
+						.then(Commands.literal("transcription").requires(Commands.hasPermission(Commands.LEVEL_GAMEMASTERS))
+								.then(Commands.argument("moteur", StringArgumentType.word())
+										.suggests((c, b) -> net.minecraft.commands.SharedSuggestionProvider.suggest(HameauConfig.get().voix.moteurs.keySet(), b))
+										.executes(c -> moteur(c, false, StringArgumentType.getString(c, "moteur")))))
+						.then(Commands.literal("essai").requires(Commands.hasPermission(Commands.LEVEL_GAMEMASTERS))
+								.executes(c -> essai(c, "Bonjour voyageur, bienvenue au village !"))
+								.then(Commands.argument("texte", StringArgumentType.greedyString()).executes(c -> essai(c, StringArgumentType.getString(c, "texte")))))
 						.then(Commands.argument("prenom et voix", StringArgumentType.greedyString()).suggests(HameauCommande::prenoms)
 								.requires(Commands.hasPermission(Commands.LEVEL_GAMEMASTERS))
 								.executes(c -> voix(c, StringArgumentType.getString(c, "prenom et voix")))))
@@ -123,11 +134,12 @@ public final class HameauCommande {
 						.then(Commands.argument("joueur", StringArgumentType.word()).executes(HameauCommande::oubli)))
 				.then(Commands.literal("modele")
 						.requires(Commands.hasPermission(Commands.LEVEL_GAMEMASTERS))
+						.executes(HameauCommande::modeles)
 						.then(Commands.argument("modele", StringArgumentType.word())
-								.suggests((c, b) -> net.minecraft.commands.SharedSuggestionProvider.suggest(List.of("haiku", "sonnet", "opus"), b))
+								.suggests((c, b) -> net.minecraft.commands.SharedSuggestionProvider.suggest(HameauConfig.get().modeles.keySet(), b))
 								.executes(c -> modele(c, StringArgumentType.getString(c, "modele"), null))
 								.then(Commands.literal("plans").then(Commands.argument("plans", StringArgumentType.word())
-										.suggests((c, b) -> net.minecraft.commands.SharedSuggestionProvider.suggest(List.of("haiku", "sonnet", "opus"), b))
+										.suggests((c, b) -> net.minecraft.commands.SharedSuggestionProvider.suggest(HameauConfig.get().modeles.keySet(), b))
 										.executes(c -> modele(c, StringArgumentType.getString(c, "modele"), StringArgumentType.getString(c, "plans")))))))
 				.then(Commands.literal("pause")
 						.requires(Commands.hasPermission(Commands.LEVEL_GAMEMASTERS))
@@ -188,17 +200,21 @@ public final class HameauCommande {
 					List.of("Exemple : /hameau univers Le monde sort d'une longue guerre contre les pillards ; tout le monde se méfie des inconnus et la magie est interdite.",
 							"Sans texte : affiche le décor actuel. « rien » : l'efface. Effet immédiat sur les réflexions ; les personnalités déjà inventées ne changent pas (/hameau renaitre).",
 							"Pour aller plus loin, les textes donnés à Claude sont dans config/hameau/ sur le serveur : esprit.txt (comportement des villageois), naissance.txt (genre de personnages inventés), village.txt (genre de villages). Après modification : /hameau recharger.")),
-			new Aide("voix", "/hameau voix [prénom] [voix]", false, "La voix parlée des villageois : état, voix disponibles, voix de chacun.",
+			new Aide("voix", "/hameau voix [prénom] [voix]", false, "La voix parlée : état, voix disponibles, voix de chacun, choix des services.",
 					List.of("Pour les entendre, installe le mod Simple Voice Chat (Fabric) : les villageois parlent alors à voix haute, en 3D. Leur volume se règle dans Simple Voice Chat, catégorie « Villageois ».",
 							"Tu peux aussi leur parler au micro : à moins de 10 blocs d'un villageois, regarde-le (ou dis son prénom) et parle. Ce qui a été compris s'affiche en gris dans ton chat.",
-							"/hameau voix : la synthèse marche-t-elle, combien de caractères dits aujourd'hui, et la liste des voix.",
-							"/hameau voix Josselin : la voix de Josselin (opérateurs).",
-							"/hameau voix Josselin Bill : lui donne la voix « Bill » (opérateurs). Sinon Claude choisit la voix à la naissance, d'après le caractère.")),
+							"/hameau voix : ce qui marche, les quotas du jour, la liste des voix.",
+							"/hameau voix Josselin Bill : donne la voix « Bill » à Josselin (opérateurs).",
+							"/hameau voix synthese <moteur> : quel service fait parler les villageois. /hameau voix transcription <moteur> : lequel comprend ton micro. Les deux peuvent différer.",
+							"Moteurs fournis : elevenlabs, openai, mistral et groq (transcription seulement). D'autres s'ajoutent dans config/hameau.json (« voix.moteurs ») ; clé dans config/hameau-cles/<moteur>.txt.",
+							"/hameau voix essai [phrase] : fait dire une phrase puis la fait transcrire, et te dit ce qui a marché.")),
 			new Aide("oubli", "/hameau oubli <joueur>", true, "Tous les villageois oublient ce joueur : griefs, opinions, souvenirs.",
 					List.of("Exemple : /hameau oubli Etiennoo", "Pour repartir de zéro après une bagarre qui a mal tourné.")),
-			new Aide("modele", "/hameau modele <haiku|sonnet|opus> [plans <haiku|sonnet|opus>]", true, "Change le modèle de Claude, sans redémarrer.",
-					List.of("haiku : rapide et économique. sonnet : plus fin. opus : le plus malin, le plus cher.",
-							"« plans » règle à part le modèle qui dessine les constructions.", "Exemple : /hameau modele haiku plans sonnet")),
+			new Aide("modele", "/hameau modele [profil] [plans <profil>]", true, "Change le modèle qui fait penser les villageois, sans redémarrer. Sans rien : la liste des profils.",
+					List.of("Profils fournis : haiku, sonnet, opus (Anthropic), mistral, mistral-large, qwen, openai, openrouter. Tu peux en ajouter dans config/hameau.json (« modeles ») : toute API compatible OpenAI convient.",
+							"La clé de chaque service va dans config/hameau-cles/<profil>.txt sur le serveur (jamais dans le chat), puis /hameau recharger.",
+							"« plans » règle à part le modèle qui dessine les constructions.", "Exemple : /hameau modele mistral plans opus",
+							"Pense à renseigner les prix du profil, sinon le plafond de dépense ne compte rien.")),
 			new Aide("pause", "/hameau pause", true, "Suspend tous les appels à Claude : les villageois ne réfléchissent plus.", List.of("/hameau reprendre pour relancer.")),
 			new Aide("reprendre", "/hameau reprendre", true, "Relance les appels à Claude après une pause.", List.of()),
 			new Aide("recharger", "/hameau recharger", true, "Relit config/hameau.json, les textes de config/hameau/ et la clé API, sans redémarrer.", List.of()));
@@ -265,7 +281,7 @@ public final class HameauCommande {
 
 	private static int voix(final CommandContext<CommandSourceStack> c, final String arguments) throws CommandSyntaxException {
 		if (arguments == null) {
-			ligne(c, "Voix : " + Voix.etat() + ".", ChatFormatting.YELLOW);
+			ligne(c, "Voix — " + Voix.etat() + ".", ChatFormatting.YELLOW);
 			List<String> noms = new ArrayList<>();
 			for (Voix.Timbre timbre : Voix.catalogue()) {
 				noms.add(timbre.prenom() + " (" + switch (timbre.genre()) {
@@ -441,7 +457,7 @@ public final class HameauCommande {
 		String statut = !Cerveau.pret() ? "pas de clé API" : Vie.enPause ? "en pause" : Ames.budget.autorise() ? "actif" : "plafond de dépense atteint";
 		ligne(c, "Hameau : " + statut + " — " + Ames.toutes().size() + " âmes connues, " + Vie.actifs(c.getSource().getServer()).size() + " éveillées.", ChatFormatting.YELLOW);
 		ligne(c, Ames.budget.resume(), ChatFormatting.GRAY);
-		ligne(c, "Modèle " + config.modele + " (plans : " + config.batir.modele + "), une réflexion toutes les " + config.intervallePensee + " s environ, vie hors ligne : " + (config.horsLigne() ? "oui" : "non") + ".", ChatFormatting.GRAY);
+		ligne(c, "Modèle " + config.profil + " : " + config.modele + " (plans : " + config.batir.modele + "), une réflexion toutes les " + config.intervallePensee + " s environ, vie hors ligne : " + (config.horsLigne() ? "oui" : "non") + ".", ChatFormatting.GRAY);
 		return 1;
 	}
 
@@ -573,14 +589,61 @@ public final class HameauCommande {
 		return total;
 	}
 
+	private static String cle(final String profil, final String url) {
+		return Cles.lire(profil) != null || Cles.local(url) ? "clé présente" : "PAS DE CLÉ : config/hameau-cles/" + profil.toLowerCase() + ".txt";
+	}
+
+	private static int modeles(final CommandContext<CommandSourceStack> c) {
+		HameauConfig config = HameauConfig.get();
+		ligne(c, "Réflexions : " + config.profil + " (" + config.modele + ") — plans : " + config.batir.profil + " (" + config.batir.modele + ").", ChatFormatting.YELLOW);
+		config.modeles.forEach((nom, modele) -> ligne(c, nom + " — " + (modele.id.isBlank() ? "identifiant à renseigner" : modele.id) + " — " + (modele.url.isBlank() ? "Anthropic" : modele.url) + " — " + cle(nom, modele.url)
+				+ (modele.prixEntree == 0 && modele.prixSortie == 0 ? " — prix non renseignés" : ""), nom.equals(config.profil) ? ChatFormatting.GREEN : ChatFormatting.GRAY));
+		ligne(c, "/hameau modele <nom> [plans <nom>] pour changer. Les profils se règlent dans config/hameau.json (« modeles »), puis /hameau recharger.", ChatFormatting.GOLD);
+		return 1;
+	}
+
 	private static int modele(final CommandContext<CommandSourceStack> c, final String reflexions, final String plans) {
 		HameauConfig config = HameauConfig.get();
 		if (!config.choisirModele(reflexions) || (plans != null && !config.choisirModelePlans(plans))) {
-			ligne(c, "Modèles possibles : haiku, sonnet, opus.", ChatFormatting.RED);
+			ligne(c, "Profil inconnu, ou sans identifiant de modèle. Profils : " + String.join(", ", config.modeles.keySet()) + ".", ChatFormatting.RED);
 			return 0;
 		}
 		HameauConfig.sauvegarder();
-		ligne(c, "Réflexions : " + config.modele + " — plans de construction : " + config.batir.modele + ". Effet immédiat, réglage conservé.", ChatFormatting.YELLOW);
+		ligne(c, "Réflexions : " + config.profil + " (" + config.modele + ") — plans de construction : " + config.batir.profil + " (" + config.batir.modele + "). Effet immédiat, réglage conservé.", ChatFormatting.YELLOW);
+		if (!Cerveau.pret()) {
+			ligne(c, "Attention, " + cle(config.profil, config.url) + ". Mets-y la clé, puis /hameau recharger : d'ici là les villageois se taisent.", ChatFormatting.RED);
+		} else if (config.prixEntreeParMillion == 0 && config.prixSortieParMillion == 0) {
+			ligne(c, "Les prix de ce profil ne sont pas renseignés : la dépense comptée restera à zéro et le plafond ne protégera plus rien.", ChatFormatting.RED);
+		}
+		return 1;
+	}
+
+	private static int moteur(final CommandContext<CommandSourceStack> c, final boolean synthese, final String nom) {
+		HameauConfig.Voix voix = HameauConfig.get().voix;
+		HameauConfig.Moteur moteur = voix.moteurs.get(nom.toLowerCase());
+		String modele = moteur == null ? null : synthese ? moteur.modeleVoix : moteur.modeleTranscription;
+		if (modele == null || modele.isBlank()) {
+			ligne(c, moteur == null ? "Moteur inconnu. Moteurs : " + String.join(", ", voix.moteurs.keySet()) + "." : "« " + nom + " » n'a pas de modèle de " + (synthese ? "synthèse" : "transcription") + " (config/hameau.json).", ChatFormatting.RED);
+			return 0;
+		}
+		if (synthese) {
+			voix.synthese = nom.toLowerCase();
+		} else {
+			voix.transcription = nom.toLowerCase();
+		}
+		HameauConfig.sauvegarder();
+		Voix.demarrer();
+		ligne(c, (synthese ? "Les villageois parlent désormais avec " : "Le micro est désormais transcrit par ") + nom + " (" + modele + "). " + cle(nom, moteur.url) + "."
+				+ (synthese ? " Chaque villageois recevra une voix de ce moteur à sa prochaine réplique." : ""), ChatFormatting.YELLOW);
+		ligne(c, "/hameau voix essai pour vérifier que ça répond.", ChatFormatting.GRAY);
+		return 1;
+	}
+
+	private static int essai(final CommandContext<CommandSourceStack> c, final String texte) {
+		List<Villager> proches = c.getSource().getLevel().getEntitiesOfClass(Villager.class, AABB.ofSize(c.getSource().getPosition(), 32, 16, 32), Entity::isAlive);
+		proches.sort(Comparator.comparingDouble(v -> v.distanceToSqr(c.getSource().getPosition())));
+		ligne(c, "Essai de la voix…", ChatFormatting.GRAY);
+		Voix.essai(c.getSource(), proches.isEmpty() ? null : proches.getFirst(), texte.length() > 200 ? texte.substring(0, 200) : texte);
 		return 1;
 	}
 

@@ -52,6 +52,6 @@ public class Hameau implements ModInitializer {
 				Component.literal("Les villageois d'ici ont leur caractère. Parle-leur dans le chat quand tu es près d'eux (cite leur prénom pour t'adresser à l'un d'eux) ; accroupi + clic droit pour leur offrir un objet.")
 						.withStyle(ChatFormatting.GRAY, ChatFormatting.ITALIC)));
 
-		LOGGER.info("Hameau : le village s'éveille ({}).", Cerveau.pret() ? HameauConfig.get().modele : "sans clé API");
+		LOGGER.info("Hameau : le village s'éveille ({}).", Cerveau.pret() ? HameauConfig.get().modele : "sans clé pour " + HameauConfig.get().profil);
 	}
 }
