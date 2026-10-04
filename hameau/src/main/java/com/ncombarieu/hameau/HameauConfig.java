@@ -165,6 +165,8 @@ public final class HameauConfig {
 		public String modele = "claude-sonnet-5-5";
 		public String profil = "sonnet";
 		public String url = "";
+		/** Effort de réflexion pour les plans quand le modèle n'est pas d'Anthropic : "low", "medium" ou "high" ; vide pour un modèle qui ne raisonne pas. */
+		public String effort = "medium";
 		public double prixEntreeParMillion = 2.0;
 		public double prixSortieParMillion = 10.0;
 		/** Faux : le bâtisseur doit avoir chaque bloc en poche (il débite ses bûches en planches) et s'arrête quand il lui en manque. */

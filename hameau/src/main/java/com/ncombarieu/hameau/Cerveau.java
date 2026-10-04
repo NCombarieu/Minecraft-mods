@@ -77,6 +77,7 @@ public final class Cerveau {
 	record Reponse(String texte, long entree, long sortie) {
 	}
 
+	private static final java.util.Set<String> SANS_FORMAT = java.util.concurrent.ConcurrentHashMap.newKeySet();
 	private static final java.util.Set<String> NOUVELLE_LIMITE = java.util.concurrent.ConcurrentHashMap.newKeySet();
 	private static final java.net.http.HttpClient HTTP = java.net.http.HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(10)).build();
 
@@ -120,6 +121,13 @@ public final class Cerveau {
 		if (effort != null && !effort.isBlank()) {
 			corps.addProperty("reasoning_effort", effort.toLowerCase());
 		}
+		// On n'attend que du JSON : le demander au service évite les réponses bancales. Certains ne connaissent pas ce réglage.
+		boolean formatJson = !SANS_FORMAT.contains(url);
+		if (formatJson) {
+			JsonObject format = new JsonObject();
+			format.addProperty("type", "json_object");
+			corps.add("response_format", format);
+		}
 		com.google.gson.JsonArray messages = new com.google.gson.JsonArray();
 		for (String[] message : new String[][] {{"system", consignes}, {"user", demande}}) {
 			JsonObject m = new JsonObject();
@@ -140,6 +148,10 @@ public final class Cerveau {
 				// Service débordé ou hoquet passager : un second essai, comme le fait le SDK d'Anthropic.
 				Thread.sleep(1500);
 				reponse = HTTP.send(requete.build(), java.net.http.HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
+			}
+			if (reponse.statusCode() == 400 && formatJson && reponse.body().contains("response_format")) {
+				SANS_FORMAT.add(url);
+				return completer(c, url, profil, modele, effort, maxTokens, consignes, demande, delaiSecondes);
 			}
 			if (reponse.statusCode() == 400 && !nouveauNom && reponse.body().contains("max_completion_tokens")) {
 				NOUVELLE_LIMITE.add(url + " " + modele);
@@ -212,7 +224,7 @@ public final class Cerveau {
 			s.append("- \"utiliser\" : actionner quelque chose : ouvrir ou fermer une porte, une trappe, un portillon, sonner la cloche du village, basculer un levier. cible = \"x y z\".\n");
 		}
 		if (autonomie.batir) {
-			s.append("- \"batir\" : construire ou aménager ce que tu imagines, jusqu'à 15 blocs de côté : maison, villa, tour, pont, puits, étal de marché, enclos, potager, bassin, fontaine, statue, monument, autel, cachette, piège, tombe, scène, terrain de jeu… cible = \"x y z\" du centre de l'emplacement (si on te dit « ici », ce sont les coordonnées de celui qui te parle), objet = description de ce que tu veux réaliser, en une phrase. Si ta fiche indique un chantier en cours, \"batir\" sans objet le reprend. Avec cible = nom de quelqu'un qui a un chantier, tu vas l'aider.\n");
+			s.append("- \"batir\" : construire ou aménager ce que tu imagines, jusqu'à 15 blocs de côté : maison, villa, tour, pont, puits, étal de marché, enclos, potager, bassin, fontaine, statue, monument, autel, cachette, piège, tombe, scène, terrain de jeu… cible = \"x y z\" du centre de l'emplacement (si on te dit « ici », ce sont les coordonnées de celui qui te parle), objet = description de ce que tu veux réaliser, en une phrase. Si ta fiche indique un chantier en cours, \"batir\" le reprend, quoi que tu décrives : pour bâtir autre chose ou ailleurs, abandonne-le d'abord avec \"arreter\". Avec cible = nom de quelqu'un qui a un chantier, tu vas l'aider.\n");
 		}
 		if (autonomie.prendreDansCoffres) {
 			s.append("- \"prendre\" : prendre ce que contient un coffre. C'est un vol si ce n'est pas à toi. cible = \"x y z\".\n");
@@ -326,8 +338,8 @@ public final class Cerveau {
 			try {
 				boolean anthropic = config.batir.url == null || config.batir.url.isBlank();
 				// Hors Anthropic, on reprend l'effort réglé dans le profil : sans lui, un modèle qui raisonne peut tout dépenser à réfléchir et ne rien répondre.
-				HameauConfig.Modele profilPlans = config.modeles.get(config.batir.profil);
-				String effort = anthropic ? (config.batir.modele.contains("haiku") ? "" : "low") : profilPlans == null || profilPlans.effort == null ? "" : profilPlans.effort;
+				// Hors Anthropic, un plan demande plus de réflexion qu'une réplique : à effort faible, ces modèles rendent des bâtisses maigres.
+				String effort = anthropic ? (config.batir.modele.contains("haiku") ? "" : "low") : config.batir.effort == null ? "" : config.batir.effort;
 				Reponse reponse = completer(c, config.batir.url, config.batir.profil, config.batir.modele, effort, 9000L, consignes, demande, 240);
 				Plan plan = lirePlan(reponse, false, 0, 0);
 				if (plan != null) {
@@ -340,7 +352,7 @@ public final class Cerveau {
 				Hameau.LOGGER.warn("Hameau : {} n'a pas pu dessiner le plan ({}), nouvel essai avec {}", config.batir.modele, e.toString(), config.modele);
 			}
 			boolean secoursAnthropic = config.url == null || config.url.isBlank();
-			return lirePlan(completer(c, config.url, config.profil, config.modele, secoursAnthropic ? "" : config.effort, secoursAnthropic ? 4000L : 9000L, consignes, demande, 240), true, perdusEntree, perdusSortie);
+			return lirePlan(completer(c, config.url, config.profil, config.modele, secoursAnthropic ? "" : config.batir.effort, secoursAnthropic ? 4000L : 9000L, consignes, demande, 240), true, perdusEntree, perdusSortie);
 		}, FILS);
 	}
 

@@ -254,14 +254,10 @@ public final class Actions {
 				if (aidee != null && (aidee.chantier != null || aidee.planEnCours)) {
 					geste.proprietaire = aidee;
 					ame.noter("Tu vas prêter main-forte à " + aidee.nom + " sur son chantier.");
-				} else if (ame.planEnCours || (ame.chantier != null && (objet == null || TROIS_NOMBRES.matcher(objet).replaceAll("").isBlank()))) {
-					// Pas de nouvelle description : il reprend son chantier.
+				} else if (ame.planEnCours || ame.chantier != null) {
+					// Un chantier ouvert se reprend, même s'il le redécrit : pour bâtir autre chose ou ailleurs, il doit d'abord l'abandonner (« arreter »).
 					geste.proprietaire = ame;
 				} else {
-					if (ame.chantier != null) {
-						ame.noter("Tu laisses inachevé « " + ame.chantier.nom + " » pour un nouveau projet.");
-						ame.chantier = null;
-					}
 					BlockPos centre = coordonnees(cible != null ? cible : objet);
 					if (centre == null) {
 						centre = villageois.blockPosition().relative(villageois.getDirection(), 6);

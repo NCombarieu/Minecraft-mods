@@ -123,7 +123,7 @@ public final class Perception {
 			f.append("En ce moment tu es en train de : ").append(activite).append(". (\"rien\" pour continuer, \"arreter\" pour abandonner.)\n");
 		} else if (ame.chantier != null) {
 			f.append("Tu as un chantier interrompu : « ").append(ame.chantier.nom).append(" » en ").append(ame.chantier.x).append(" ").append(ame.chantier.y).append(" ").append(ame.chantier.z)
-					.append(", reste ").append(ame.chantier.restants.size()).append(" blocs à poser. (\"batir\" pour le reprendre.)\n");
+					.append(", reste ").append(ame.chantier.restants.size()).append(" blocs à poser. (\"batir\" pour le reprendre ; \"arreter\" pour l'abandonner, avant d'en commencer un autre.)\n");
 		}
 		if (ame.projet != null) {
 			f.append("Ton projet du moment : ").append(ame.projet).append("\n");
