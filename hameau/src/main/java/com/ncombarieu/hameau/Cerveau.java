@@ -77,6 +77,7 @@ public final class Cerveau {
 	record Reponse(String texte, long entree, long sortie) {
 	}
 
+	private static final java.util.Set<String> NOUVELLE_LIMITE = java.util.concurrent.ConcurrentHashMap.newKeySet();
 	private static final java.net.http.HttpClient HTTP = java.net.http.HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(10)).build();
 
 	/**
@@ -108,7 +109,12 @@ public final class Cerveau {
 		}
 		JsonObject corps = new JsonObject();
 		corps.addProperty("model", modele);
-		corps.addProperty("max_tokens", maxTokens);
+		// Les modèles récents d'OpenAI veulent « max_completion_tokens » ; les autres services, « max_tokens ».
+		boolean nouveauNom = NOUVELLE_LIMITE.contains(url + " " + modele);
+		corps.addProperty(nouveauNom ? "max_completion_tokens" : "max_tokens", maxTokens);
+		if (effort != null && !effort.isBlank()) {
+			corps.addProperty("reasoning_effort", effort.toLowerCase());
+		}
 		com.google.gson.JsonArray messages = new com.google.gson.JsonArray();
 		for (String[] message : new String[][] {{"system", consignes}, {"user", demande}}) {
 			JsonObject m = new JsonObject();
@@ -125,6 +131,10 @@ public final class Cerveau {
 		}
 		try {
 			java.net.http.HttpResponse<String> reponse = HTTP.send(requete.build(), java.net.http.HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
+			if (reponse.statusCode() == 400 && !nouveauNom && reponse.body().contains("max_completion_tokens")) {
+				NOUVELLE_LIMITE.add(url + " " + modele);
+				return completer(c, url, profil, modele, effort, maxTokens, consignes, demande);
+			}
 			if (reponse.statusCode() != 200) {
 				throw new IllegalStateException(profil + " a répondu " + reponse.statusCode() + " : " + (reponse.body().length() > 300 ? reponse.body().substring(0, 300) : reponse.body()));
 			}

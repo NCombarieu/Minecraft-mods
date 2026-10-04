@@ -425,7 +425,7 @@ public final class Voix {
 	}
 
 	private static boolean durable(final Refus refus) {
-		return refus != null && (refus.statut == 401 || refus.statut == 402 || refus.statut == 403 || refus.statut == 404);
+		return refus != null && (refus.statut == 401 || refus.statut == 402 || refus.statut == 403 || refus.statut == 404 || refus.getMessage().contains("insufficient_quota"));
 	}
 
 	/**
@@ -459,7 +459,7 @@ public final class Voix {
 				Refus refus = refus(erreur);
 				// Quota épuisé ou clé refusée : inutile d'insister à chaque réplique.
 				pauseJusqua = System.currentTimeMillis() + (durable(refus) ? 30 * 60_000L : 60_000L);
-				panne = (refus == null ? "service injoignable" : refus.getMessage().contains("quota") ? "quota épuisé" : "réponse " + refus.statut) + ", nouvel essai dans " + (durable(refus) ? "30 minutes" : "une minute");
+				panne = (refus == null ? "service injoignable" : refus.getMessage().contains("quota") || refus.getMessage().contains("credits") ? "quota ou crédit épuisé" : "réponse " + refus.statut) + ", nouvel essai dans " + (durable(refus) ? "30 minutes" : "une minute");
 				Hameau.LOGGER.warn("Hameau : voix de {} refusée par {} : {}", ame.nom, config.synthese, refus != null ? refus.statut + " " + refus.getMessage() : erreur.toString());
 				return;
 			}
