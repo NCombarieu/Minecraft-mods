@@ -55,6 +55,19 @@ public final class HameauConfig {
 	/** Le serveur redistribue lui-même le chat des joueurs, en messages système : chacun le voit quels que soient ses réglages de chat sécurisé. */
 	public boolean chatFiable = true;
 
+	public Voix voix = new Voix();
+
+	/** Voix parlée des villageois : demande le mod Simple Voice Chat (serveur et joueurs) et une clé ElevenLabs dans config/hameau-voix-cle.txt. */
+	public static final class Voix {
+		public boolean actif = true;
+		/** Modèle ElevenLabs : eleven_flash_v2_5 (rapide, économe), eleven_multilingual_v2 (plus naturel, deux fois plus cher). */
+		public String modele = "eleven_flash_v2_5";
+		/** On entend un villageois jusqu'à cette distance, en blocs. */
+		public float distance = 24;
+		/** Au-delà, les villageois se taisent jusqu'au lendemain (le texte reste dans le chat). */
+		public int plafondCaracteresParJour = 5000;
+	}
+
 	public Batir batir = new Batir();
 
 	public static final class Batir {

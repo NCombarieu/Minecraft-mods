@@ -11,11 +11,27 @@ public final class Budget {
 	public long tokensEntree;
 	public long tokensSortie;
 
+	/** Caractères dits à voix haute (ElevenLabs les facture au caractère). */
+	public long voixCaracteres;
+	public long voixJour;
+
+	public boolean voixAutorisee(final int caracteres) {
+		changerDeJour();
+		return voixJour + caracteres <= HameauConfig.get().voix.plafondCaracteresParJour;
+	}
+
+	public void voixDite(final int caracteres) {
+		changerDeJour();
+		voixCaracteres += caracteres;
+		voixJour += caracteres;
+	}
+
 	private void changerDeJour() {
 		String aujourdhui = LocalDate.now().toString();
 		if (!aujourdhui.equals(jour)) {
 			jour = aujourdhui;
 			jourUsd = 0;
+			voixJour = 0;
 		}
 	}
 

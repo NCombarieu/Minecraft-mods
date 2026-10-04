@@ -31,6 +31,7 @@ import net.minecraft.world.phys.AABB;
  * /hameau help [commande]       — la liste des commandes, ou le détail de l'une d'elles (tout le monde)
  * /hameau etat                  — dépense et activité (tout le monde)
  * /hameau univers [texte|rien]  — le décor propre au serveur, ajouté aux consignes de Claude (ops)
+ * /hameau voix [prénom] [voix]  — état de la voix parlée, voix d'un villageois, ou changement de voix (ops)
  * /hameau village               — nom et culture du village où l'on se trouve (tout le monde)
  * /hameau personnalite <prénom> <demande> — réécrit son caractère selon la demande (ops)
  * /hameau renaitre <prénom|tous> — lui fait inventer une identité toute neuve par Claude (ops)
@@ -67,6 +68,11 @@ public final class HameauCommande {
 								.suggests((c, b) -> net.minecraft.commands.SharedSuggestionProvider.suggest(AIDES.stream().map(Aide::nom), b))
 								.executes(c -> aide(c, StringArgumentType.getString(c, "commande")))))
 				.then(Commands.literal("village").executes(HameauCommande::village))
+				.then(Commands.literal("voix")
+						.executes(c -> voix(c, null))
+						.then(Commands.argument("prenom et voix", StringArgumentType.greedyString()).suggests(HameauCommande::prenoms)
+								.requires(Commands.hasPermission(Commands.LEVEL_GAMEMASTERS))
+								.executes(c -> voix(c, StringArgumentType.getString(c, "prenom et voix")))))
 				.then(Commands.literal("univers")
 						.requires(Commands.hasPermission(Commands.LEVEL_GAMEMASTERS))
 						.executes(c -> univers(c, null))
@@ -166,6 +172,11 @@ public final class HameauCommande {
 					List.of("Exemple : /hameau univers Le monde sort d'une longue guerre contre les pillards ; tout le monde se méfie des inconnus et la magie est interdite.",
 							"Sans texte : affiche le décor actuel. « rien » : l'efface. Effet immédiat sur les réflexions ; les personnalités déjà inventées ne changent pas (/hameau renaitre).",
 							"Pour aller plus loin, les textes donnés à Claude sont dans config/hameau/ sur le serveur : esprit.txt (comportement des villageois), naissance.txt (genre de personnages inventés), village.txt (genre de villages). Après modification : /hameau recharger.")),
+			new Aide("voix", "/hameau voix [prénom] [voix]", false, "La voix parlée des villageois : état, voix disponibles, voix de chacun.",
+					List.of("Pour les entendre, installe le mod Simple Voice Chat (Fabric) : les villageois parlent alors à voix haute, en 3D. Leur volume se règle dans Simple Voice Chat, catégorie « Villageois ».",
+							"/hameau voix : la synthèse marche-t-elle, combien de caractères dits aujourd'hui, et la liste des voix.",
+							"/hameau voix Josselin : la voix de Josselin (opérateurs).",
+							"/hameau voix Josselin Bill : lui donne la voix « Bill » (opérateurs). Sinon Claude choisit la voix à la naissance, d'après le caractère.")),
 			new Aide("oubli", "/hameau oubli <joueur>", true, "Tous les villageois oublient ce joueur : griefs, opinions, souvenirs.",
 					List.of("Exemple : /hameau oubli Etiennoo", "Pour repartir de zéro après une bagarre qui a mal tourné.")),
 			new Aide("modele", "/hameau modele <haiku|sonnet|opus> [plans <haiku|sonnet|opus>]", true, "Change le modèle de Claude, sans redémarrer.",
@@ -231,6 +242,36 @@ public final class HameauCommande {
 		Textes.changerUnivers(efface ? "" : texte.trim());
 		Cerveau.rafraichir();
 		ligne(c, efface ? "Décor effacé." : "Décor enregistré : les villageois en tiennent compte dès leur prochaine réflexion.", ChatFormatting.YELLOW);
+		return 1;
+	}
+
+	private static int voix(final CommandContext<CommandSourceStack> c, final String arguments) throws CommandSyntaxException {
+		if (arguments == null) {
+			ligne(c, "Voix : " + Voix.etat() + ".", ChatFormatting.YELLOW);
+			List<String> noms = new ArrayList<>();
+			for (Voix.Timbre timbre : Voix.catalogue()) {
+				noms.add(timbre.prenom() + " (" + switch (timbre.genre()) {
+					case "female" -> "femme";
+					case "male" -> "homme";
+					default -> "neutre";
+				} + ")");
+			}
+			if (!noms.isEmpty()) {
+				ligne(c, String.join(", ", noms), ChatFormatting.GRAY);
+			}
+			return 1;
+		}
+		String[] parties = arguments.trim().split("\\s+", 2);
+		Ame ame = Ames.de(nomme(c, parties[0]));
+		if (parties.length > 1) {
+			Voix.Timbre timbre = Voix.parNom(parties[1]);
+			if (timbre == null) {
+				ligne(c, "Pas de voix « " + parties[1] + " ». /hameau voix pour la liste.", ChatFormatting.RED);
+				return 0;
+			}
+			Voix.donner(ame, timbre);
+		}
+		ligne(c, ame.voixNom == null ? ame.nom + " n'a pas encore de voix : elle sera choisie à sa première réplique entendue." : ame.nom + " parle avec la voix « " + ame.voixNom + " ».", ChatFormatting.YELLOW);
 		return 1;
 	}
 
@@ -502,7 +543,8 @@ public final class HameauCommande {
 	private static int recharger(final CommandContext<CommandSourceStack> c) {
 		HameauConfig.charger();
 		Cerveau.demarrer();
-		ligne(c, "Réglages et clé relus." + (Cerveau.pret() ? "" : " Aucune clé API trouvée."), ChatFormatting.YELLOW);
+		Voix.demarrer();
+		ligne(c, "Réglages, textes et clés relus." + (Cerveau.pret() ? "" : " Aucune clé API trouvée."), ChatFormatting.YELLOW);
 		return 1;
 	}
 }

@@ -46,7 +46,7 @@ public final class Cerveau {
 	}
 
 	/** Une personnalité inventée par Claude. Les champs absents de la réponse sont null. */
-	public record Persona(String nom, Boolean femme, java.util.List<String> traits, String manie, String parler, String desir, String peur, String histoire,
+	public record Persona(String nom, Boolean femme, java.util.List<String> traits, String manie, String parler, String desir, String peur, String histoire, String voix,
 			String lienAvec, String lienPourToi, String lienPourLui, int opinion, int opinionDeLui, long tokensEntree, long tokensSortie) {
 		boolean complete() {
 			return !traits.isEmpty() && manie != null && parler != null && desir != null && peur != null;
@@ -173,6 +173,7 @@ public final class Cerveau {
 			- "peur" : ce qu'il redoute, en un groupe nominal.
 			- "histoire" : deux phrases à la 2e personne (« Tu… ») : d'où il vient, ce qui l'a marqué, un secret ou une affaire en cours. Rien qui ne puisse exister dans Minecraft.
 			- "lien" : un lien ancien avec UN des habitants listés, seulement si on te le demande ; sinon null. "avec" = son prénom exact ; "pour_toi" = ce que ton personnage sait de ce lien, à la 2e personne, en nommant l'autre ; "pour_lui" = ce que l'autre en sait, à la 2e personne, en nommant ton personnage par son nouveau prénom (null s'il l'ignore) ; "opinion" et "opinion_de_lui" = de -50 à 50.
+			- "voix" : seulement si une liste de voix t'est proposée, le prénom de celle qui lui ressemble le plus (âge, tempérament), en préférant une voix que personne ne porte encore ; ajoute alors "voix":"…" à l'objet.
 			Tout en français. Chaque champ tient en une phrase courte, sauf "histoire".""";
 
 	private static final String FONDATION = """
@@ -218,7 +219,7 @@ public final class Cerveau {
 			}
 			JsonObject lien = json.has("lien") && json.get("lien").isJsonObject() ? json.getAsJsonObject("lien") : new JsonObject();
 			Boolean femme = json.has("femme") && json.get("femme").isJsonPrimitive() && json.getAsJsonPrimitive("femme").isBoolean() ? json.get("femme").getAsBoolean() : null;
-			return new Persona(chaine(json, "nom"), femme, traits, chaine(json, "manie"), chaine(json, "parler"), chaine(json, "desir"), chaine(json, "peur"), chaine(json, "histoire"),
+			return new Persona(chaine(json, "nom"), femme, traits, chaine(json, "manie"), chaine(json, "parler"), chaine(json, "desir"), chaine(json, "peur"), chaine(json, "histoire"), chaine(json, "voix"),
 					chaine(lien, "avec"), chaine(lien, "pour_toi"), chaine(lien, "pour_lui"), entier(lien, "opinion"), entier(lien, "opinion_de_lui"),
 					reponse.usage().inputTokens(), reponse.usage().outputTokens());
 		}, FILS);

@@ -20,6 +20,7 @@ public class Hameau implements ModInitializer {
 	public void onInitialize() {
 		HameauConfig.charger();
 		Cerveau.demarrer();
+		Voix.demarrer();
 		Evenements.register();
 		CommandRegistrationCallback.EVENT.register((dispatcher, registries, environment) -> HameauCommande.register(dispatcher));
 

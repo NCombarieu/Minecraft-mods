@@ -327,6 +327,10 @@ public final class Perception {
 			}
 			f.append("Tirés au sort pour t'inspirer, à prendre ou à laisser : ").append(ame.baptise ? "" : "initiale du prénom " + Ames.initiale() + " ; ").append(Ames.germes(3)).append(".\n");
 		}
+		String voix = Voix.choix(ame);
+		if (!voix.isEmpty() && (ame.voixId == null || ame.consigne == null)) {
+			f.append("Voix possibles pour le faire parler : ").append(voix).append(".\n");
+		}
 		f.append(veutLien ? "Donne-lui un \"lien\" avec l'un des habitants déjà là." : "\"lien\" : null.");
 		return f.toString();
 	}

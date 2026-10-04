@@ -138,7 +138,8 @@ public final class Bulles {
 			case "surprise" -> SoundEvents.VILLAGER_TRADE;
 			default -> parle ? SoundEvents.VILLAGER_AMBIENT : null;
 		};
-		if (son != null) {
+		// Quand il parle pour de bon, sa voix remplace le « hmm » du villageois.
+		if (son != null && !(parle && Voix.active())) {
 			float voix = ame.voix == 0 ? 1F : ame.voix;
 			level.playSound(null, villageois.getX(), villageois.getY(), villageois.getZ(), son, SoundSource.NEUTRAL, 1F, ame.enfant ? voix + 0.4F : voix);
 		}

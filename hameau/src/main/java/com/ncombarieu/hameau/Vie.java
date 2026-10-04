@@ -287,6 +287,10 @@ public final class Vie {
 			ame.parler = persona.parler();
 			ame.desir = persona.desir();
 			ame.peur = persona.peur();
+			Voix.Timbre timbre = Voix.parNom(persona.voix());
+			if (timbre != null) {
+				Voix.donner(ame, timbre);
+			}
 			if (persona.histoire() != null) {
 				ame.histoire = persona.histoire();
 			}
@@ -434,6 +438,9 @@ public final class Vie {
 					joueur.sendSystemMessage(message);
 				}
 			}
+		}
+		if (!chuchote || vise instanceof ServerPlayer) {
+			Voix.parler(level.getServer(), villageois, ame, texte, chuchote ? vise.getUUID() : null);
 		}
 		ame.noter("Tu as " + (chuchote ? "chuchoté" : "dit") + (destinataire != null ? " à " + destinataire : "") + " : « " + texte + " »");
 		for (Villager autre : level.getEntitiesOfClass(Villager.class, villageois.getBoundingBox().inflate(12), e -> e != villageois && e.isAlive())) {

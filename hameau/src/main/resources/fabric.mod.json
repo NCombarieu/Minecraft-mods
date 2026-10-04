@@ -16,6 +16,9 @@
 	"entrypoints": {
 		"main": [
 			"com.ncombarieu.hameau.Hameau"
+		],
+		"voicechat": [
+			"com.ncombarieu.hameau.voix.VoixPlugin"
 		]
 	},
 	"mixins": [
@@ -26,5 +29,8 @@
 		"minecraft": "~26.3",
 		"java": ">=25",
 		"fabric-api": "*"
+	},
+	"suggests": {
+		"voicechat": "*"
 	}
 }

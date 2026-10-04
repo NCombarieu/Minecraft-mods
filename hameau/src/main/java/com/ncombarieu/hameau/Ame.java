@@ -26,6 +26,10 @@ public final class Ame {
 	public String parler;
 	/** Hauteur de la voix (son du villageois quand il parle). */
 	public float voix;
+	/** Sa voix parlée (ElevenLabs) : identifiant, prénom de la voix, et son débit propre. */
+	public String voixId;
+	public String voixNom;
+	public float debit;
 	/** Liens anciens avec d'autres habitants : jamais oubliés. */
 	public List<String> liens = new ArrayList<>();
 	public boolean lie;
