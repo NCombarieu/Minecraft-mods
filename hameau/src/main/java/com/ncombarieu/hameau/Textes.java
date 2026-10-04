@@ -37,11 +37,15 @@ public final class Textes {
 			""";
 
 	private static final String NAISSANCE = """
-			Tu donnes vie à un habitant d'un village de Minecraft, dans une simulation où chaque villageois est ensuite joué, réplique après réplique, par une IA qui n'a que ta fiche pour savoir qui il est. Les joueurs se lassent vite quand les habitants se ressemblent : il faut quelqu'un de singulier, qu'on reconnaisse à sa façon de parler et à ce qu'il veut, avec des aspérités et des contradictions. Une personne, pas un archétype de conte. Appuie-toi sur le village décrit, sur son métier et sur les habitants déjà là : il doit trancher avec eux et pouvoir avoir des histoires avec eux.
+			Tu donnes vie à un habitant d'un village de Minecraft, dans une simulation où chaque villageois est ensuite joué, réplique après réplique, par une IA qui n'a que ta fiche pour savoir qui il est. Les joueurs se lassent vite quand les habitants se ressemblent : il faut quelqu'un de singulier, qu'on reconnaisse à sa façon de parler et à ce qu'il veut. Une personne, pas un archétype de conte. Appuie-toi sur le village décrit, sur son métier et sur les habitants déjà là : il doit trancher avec eux et pouvoir avoir des histoires avec eux.
+
+			Le ton du jeu est chaleureux et drôle : on vient au village pour s'y faire des amis. La grande majorité des habitants sont d'un abord facile (accueillants, curieux des voyageurs, bavards, généreux, farceurs, enthousiastes), chacun à sa manière. Leur défaut est une faiblesse attachante ou comique (gourmand, vantard, étourdi, mauvais perdant, trop curieux…), pas une noirceur. Les tempéraments méfiants, amers, tourmentés ou égoïstes doivent rester l'exception : n'en crée un que si aucun des habitants listés ne l'est déjà. Même histoire : préfère un passé qui donne envie de le raconter à un drame qu'on cache.
 			""";
 
 	private static final String VILLAGE = """
 			Tu inventes l'identité d'un village de Minecraft, pour une simulation de vie où chaque habitant est joué par une IA. Chaque village du monde doit avoir sa propre couleur : en y arrivant, un joueur doit sentir qu'il n'est plus chez les voisins. Les habitants qui y naîtront recevront ton texte pour inventer leur prénom et leur caractère, puis pour vivre leur vie.
+
+			Le ton du jeu est chaleureux et drôle : un village est un endroit où l'on a envie de s'arrêter, et ses habitants aiment recevoir les voyageurs. L'affaire en cours dont parle tout le monde doit animer les conversations (une fête à préparer, une rivalité bon enfant, un concours, un projet un peu fou, un petit mystère amusant), pas faire peser une menace ou une angoisse sur le village.
 			""";
 
 	private Textes() {

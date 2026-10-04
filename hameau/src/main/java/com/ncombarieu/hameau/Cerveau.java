@@ -166,12 +166,12 @@ public final class Cerveau {
 			{"nom":"…","traits":["…","…","…"],"manie":"…","parler":"…","desir":"…","peur":"…","histoire":"…","lien":{"avec":"…","pour_toi":"…","pour_lui":"…","opinion":0,"opinion_de_lui":0}}
 
 			- "nom" : un prénom seul, en un mot (lettres et tiret uniquement), dans le style des prénoms du village, différent de tous ceux déjà pris. Écarte les premiers prénoms qui te viennent : ce sont ceux qu'on a déjà vus partout.
-			- "traits" : 3 ou 4 traits de caractère, accordés à son sexe, dont au moins un vrai défaut.
+			- "traits" : 3 ou 4 traits de caractère, accordés à son sexe, dont un défaut.
 			- "manie" : une habitude bien à lui, écrite comme un groupe verbal à la 3e personne sans sujet, par exemple « range ses outils par ordre de taille ».
 			- "parler" : sa façon de s'exprimer (rythme, vocabulaire, tics de langage), sous la même forme, par exemple « parle bas et finit ses phrases par une question ».
 			- "desir" : ce qu'il veut vraiment, concret et à sa portée dans un village, à l'infinitif.
 			- "peur" : ce qu'il redoute, en un groupe nominal.
-			- "histoire" : deux phrases à la 2e personne (« Tu… ») : d'où il vient, ce qui l'a marqué, un secret ou une affaire en cours. Rien qui ne puisse exister dans Minecraft.
+			- "histoire" : deux phrases à la 2e personne (« Tu… ») : d'où il vient, ce qui l'a marqué, ce qui l'occupe en ce moment. Rien qui ne puisse exister dans Minecraft.
 			- "lien" : un lien ancien avec UN des habitants listés, seulement si on te le demande ; sinon null. "avec" = son prénom exact ; "pour_toi" = ce que ton personnage sait de ce lien, à la 2e personne, en nommant l'autre ; "pour_lui" = ce que l'autre en sait, à la 2e personne, en nommant ton personnage par son nouveau prénom (null s'il l'ignore) ; "opinion" et "opinion_de_lui" = de -50 à 50.
 			- "voix" : seulement si une liste de voix t'est proposée, le prénom de celle qui lui ressemble le plus (âge, tempérament), en préférant une voix que personne ne porte encore ; ajoute alors "voix":"…" à l'objet.
 			Tout en français. Chaque champ tient en une phrase courte, sauf "histoire".""";
@@ -181,7 +181,7 @@ public final class Cerveau {
 			Réponds UNIQUEMENT par un objet JSON, sans rien autour ni ``` :
 			{"nom":"nom du village","culture":"…"}
 
-			"culture" : quatre ou cinq phrases en français, qui disent de quoi vit le village et ce dont il est fier, une coutume ou une croyance bien à lui, comment sonnent les prénoms d'ici (décris le style, sans donner de liste), une façon de parler commune (tournures, salutations, jurons), et une affaire qui divise ou inquiète les habitants en ce moment. Rien qui ne puisse exister dans Minecraft.""";
+			"culture" : quatre ou cinq phrases en français, qui disent de quoi vit le village et ce dont il est fier, une coutume ou une croyance bien à lui, comment sonnent les prénoms d'ici (décris le style, sans donner de liste), une façon de parler commune (tournures, salutations, jurons), et l'affaire dont tout le monde parle en ce moment. Rien qui ne puisse exister dans Minecraft.""";
 
 	/** Un appel simple, avec le modèle des réflexions : consignes, demande, texte en retour. */
 	private static Message appeler(final AnthropicClient c, final HameauConfig config, final String consignes, final String demande) {
