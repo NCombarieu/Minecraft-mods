@@ -131,6 +131,11 @@ public final class Cerveau {
 		}
 		try {
 			java.net.http.HttpResponse<String> reponse = HTTP.send(requete.build(), java.net.http.HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
+			if (reponse.statusCode() == 429 || reponse.statusCode() >= 500) {
+				// Service débordé ou hoquet passager : un second essai, comme le fait le SDK d'Anthropic.
+				Thread.sleep(1500);
+				reponse = HTTP.send(requete.build(), java.net.http.HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
+			}
 			if (reponse.statusCode() == 400 && !nouveauNom && reponse.body().contains("max_completion_tokens")) {
 				NOUVELLE_LIMITE.add(url + " " + modele);
 				return completer(c, url, profil, modele, effort, maxTokens, consignes, demande);
