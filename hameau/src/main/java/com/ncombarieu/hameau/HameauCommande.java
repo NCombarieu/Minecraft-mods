@@ -30,6 +30,7 @@ import net.minecraft.world.phys.AABB;
 /**
  * /hameau help [commande]       — la liste des commandes, ou le détail de l'une d'elles (tout le monde)
  * /hameau etat                  — dépense et activité (tout le monde)
+ * /hameau univers [texte|rien]  — le décor propre au serveur, ajouté aux consignes de Claude (ops)
  * /hameau village               — nom et culture du village où l'on se trouve (tout le monde)
  * /hameau personnalite <prénom> <demande> — réécrit son caractère selon la demande (ops)
  * /hameau renaitre <prénom|tous> — lui fait inventer une identité toute neuve par Claude (ops)
@@ -66,6 +67,10 @@ public final class HameauCommande {
 								.suggests((c, b) -> net.minecraft.commands.SharedSuggestionProvider.suggest(AIDES.stream().map(Aide::nom), b))
 								.executes(c -> aide(c, StringArgumentType.getString(c, "commande")))))
 				.then(Commands.literal("village").executes(HameauCommande::village))
+				.then(Commands.literal("univers")
+						.requires(Commands.hasPermission(Commands.LEVEL_GAMEMASTERS))
+						.executes(c -> univers(c, null))
+						.then(Commands.argument("texte", StringArgumentType.greedyString()).executes(c -> univers(c, StringArgumentType.getString(c, "texte")))))
 				.then(Commands.literal("personnalite")
 						.requires(Commands.hasPermission(Commands.LEVEL_GAMEMASTERS))
 						.then(Commands.argument("prenom et demande", StringArgumentType.greedyString()).suggests(HameauCommande::prenoms)
@@ -157,6 +162,10 @@ public final class HameauCommande {
 			new Aide("presenter", "/hameau presenter <prénom>", true, "Fait d'un étranger un habitant du village où il se trouve.",
 					List.of("Un villageois apparu par /summon ou par un œuf reste un étranger, sans village, tant qu'on ne l'a pas présenté.",
 							"Les villageois présents assistent à la présentation et s'en souviennent.")),
+			new Aide("univers", "/hameau univers [texte|rien]", true, "Le décor de ce serveur, que tous les villageois et tous les villages prennent en compte.",
+					List.of("Exemple : /hameau univers Le monde sort d'une longue guerre contre les pillards ; tout le monde se méfie des inconnus et la magie est interdite.",
+							"Sans texte : affiche le décor actuel. « rien » : l'efface. Effet immédiat sur les réflexions ; les personnalités déjà inventées ne changent pas (/hameau renaitre).",
+							"Pour aller plus loin, les textes donnés à Claude sont dans config/hameau/ sur le serveur : esprit.txt (comportement des villageois), naissance.txt (genre de personnages inventés), village.txt (genre de villages). Après modification : /hameau recharger.")),
 			new Aide("oubli", "/hameau oubli <joueur>", true, "Tous les villageois oublient ce joueur : griefs, opinions, souvenirs.",
 					List.of("Exemple : /hameau oubli Etiennoo", "Pour repartir de zéro après une bagarre qui a mal tourné.")),
 			new Aide("modele", "/hameau modele <haiku|sonnet|opus> [plans <haiku|sonnet|opus>]", true, "Change le modèle de Claude, sans redémarrer.",
@@ -164,7 +173,7 @@ public final class HameauCommande {
 							"« plans » règle à part le modèle qui dessine les constructions.", "Exemple : /hameau modele haiku plans sonnet")),
 			new Aide("pause", "/hameau pause", true, "Suspend tous les appels à Claude : les villageois ne réfléchissent plus.", List.of("/hameau reprendre pour relancer.")),
 			new Aide("reprendre", "/hameau reprendre", true, "Relance les appels à Claude après une pause.", List.of()),
-			new Aide("recharger", "/hameau recharger", true, "Relit config/hameau.json et la clé API, sans redémarrer.", List.of()));
+			new Aide("recharger", "/hameau recharger", true, "Relit config/hameau.json, les textes de config/hameau/ et la clé API, sans redémarrer.", List.of()));
 
 	private static Component cliquable(final Aide aide, final ChatFormatting couleur) {
 		String saisie = aide.usage().split(" [<\\[]", 2)[0] + (aide.usage().contains("<") || aide.usage().contains("[") ? " " : "");
@@ -210,6 +219,18 @@ public final class HameauCommande {
 		}
 		ligne(c, village.nom + " — " + habitants + " habitants", ChatFormatting.YELLOW);
 		ligne(c, village.culture, ChatFormatting.GRAY);
+		return 1;
+	}
+
+	private static int univers(final CommandContext<CommandSourceStack> c, final String texte) {
+		if (texte == null) {
+			ligne(c, Textes.univers.isBlank() ? "Aucun décor défini. /hameau univers <texte> pour en donner un." : "Décor actuel : " + Textes.univers.strip(), ChatFormatting.YELLOW);
+			return 1;
+		}
+		boolean efface = texte.trim().equalsIgnoreCase("rien");
+		Textes.changerUnivers(efface ? "" : texte.trim());
+		Cerveau.rafraichir();
+		ligne(c, efface ? "Décor effacé." : "Décor enregistré : les villageois en tiennent compte dès leur prochaine réflexion.", ChatFormatting.YELLOW);
 		return 1;
 	}
 

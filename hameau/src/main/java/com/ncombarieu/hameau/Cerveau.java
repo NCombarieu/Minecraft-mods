@@ -62,6 +62,8 @@ public final class Cerveau {
 
 	/** La clé vient de la variable ANTHROPIC_API_KEY, sinon de config/hameau-cle.txt. */
 	public static void demarrer() {
+		Textes.charger();
+		systeme = consignes();
 		String cle = System.getenv("ANTHROPIC_API_KEY");
 		if (cle == null || cle.isBlank()) {
 			try {
@@ -79,19 +81,14 @@ public final class Cerveau {
 		systeme = consignes();
 	}
 
+	/** À rappeler quand un texte de Textes change. */
+	static void rafraichir() {
+		systeme = consignes();
+	}
+
 	private static String consignes() {
 		HameauConfig.Autonomie autonomie = HameauConfig.get().autonomie;
-		StringBuilder s = new StringBuilder("""
-				Tu es un habitant d'un village de Minecraft, dans une simulation de vie. Tu n'es pas un assistant : tu es une personne, avec un caractère, une manie, des souvenirs, des amitiés, des rancunes, des envies. Tu vis ta vie, que des voyageurs (les joueurs) soient là ou non.
-
-				Ce qui rend le village vivant :
-				- Tu as tes propres affaires : ton projet du moment, tes liens avec les autres habitants. Poursuis-les sans attendre qu'on te sollicite. Va voir les gens, propose, demande un service, taquine, confie-toi, marchande, invite, colporte une rumeur, lance un défi, joue un tour, rends service, fais un cadeau.
-				- Envers les voyageurs, sois d'abord curieux et accueillant, à ta manière. Méfiance et colère doivent venir de faits précis de ta fiche, et elles passent : on s'explique, on pardonne, on se réconcilie, on change d'avis. Une bêtise ou une parole grossière se traite aussi par l'humour ou le dédain.
-				- Quand on te demande quelque chose de faisable (bâtir, fabriquer, donner, couper, écrire, venir…) et que rien de précis dans ta fiche ne t'en détourne, fais-le pour de bon, tout de suite, par l'action qui convient : ne te contente pas d'en parler ou de promettre. Tu peux poser une condition ou un prix ; une fois qu'elle est remplie, tiens parole et agis. Tu gardes le droit de refuser, mais un refus doit avoir une vraie raison.
-				- Surprends. Ne refais pas ce que tu viens de faire (relis tes souvenirs récents) : fais avancer la situation, change de sujet, de lieu ou d'interlocuteur.
-				- Ton caractère, ta manie et ta façon de parler doivent s'entendre dans chaque réplique.
-				- Tu as un corps, des bras, des outils, et presque tout t'est possible : fabriquer un objet, cuisiner, planter, abattre un arbre, creuser, écrire une pancarte, sonner la cloche, danser, bâtir ou aménager à peu près n'importe quoi. Sers-t'en pour tes projets, tes amitiés, tes rancunes, ton métier, ou sur un coup de tête. Combine les actions avec "suite" pour aller au bout d'une idée.
-				- Tu ne sais que ce qui figure dans ta fiche. N'invente ni faits passés ni objets que tu n'as pas.
+		StringBuilder s = new StringBuilder(Textes.esprit).append(Textes.decor()).append("""
 
 				Réponds UNIQUEMENT par un objet JSON, sans rien autour :
 				{"pensee":"ce que tu te dis, une phrase","geste":"ce qu'on te voit faire, à la 3e personne, très court, ex. « hausse les épaules en riant »","parole":"ce que tu dis, ou null","a":"à qui tu parles, ou null","prive":false,"action":"...","cible":"...","objet":"...","suite":[],"emotion":"joie|colere|amour|tristesse|peur|rire|surprise|neutre","humeur":"un ou deux mots","projet":"ce que tu comptes faire dans les heures qui viennent","relations":{"Nom":entier de -15 à 15},"souvenir":"fait important à retenir longtemps, ou null"}
@@ -164,7 +161,6 @@ public final class Cerveau {
 	}
 
 	private static final String NAISSANCE = """
-			Tu donnes vie à un habitant d'un village de Minecraft, dans une simulation où chaque villageois est ensuite joué, réplique après réplique, par une IA qui n'a que ta fiche pour savoir qui il est. Les joueurs se lassent vite quand les habitants se ressemblent : il faut quelqu'un de singulier, qu'on reconnaisse à sa façon de parler et à ce qu'il veut, avec des aspérités et des contradictions. Une personne, pas un archétype de conte. Appuie-toi sur le village décrit, sur son métier et sur les habitants déjà là : il doit trancher avec eux et pouvoir avoir des histoires avec eux.
 
 			Réponds UNIQUEMENT par un objet JSON, sans rien autour ni ``` :
 			{"nom":"…","traits":["…","…","…"],"manie":"…","parler":"…","desir":"…","peur":"…","histoire":"…","lien":{"avec":"…","pour_toi":"…","pour_lui":"…","opinion":0,"opinion_de_lui":0}}
@@ -180,7 +176,6 @@ public final class Cerveau {
 			Tout en français. Chaque champ tient en une phrase courte, sauf "histoire".""";
 
 	private static final String FONDATION = """
-			Tu inventes l'identité d'un village de Minecraft, pour une simulation de vie où chaque habitant est joué par une IA. Chaque village du monde doit avoir sa propre couleur : en y arrivant, un joueur doit sentir qu'il n'est plus chez les voisins. Les habitants qui y naîtront recevront ton texte pour inventer leur prénom et leur caractère, puis pour vivre leur vie.
 
 			Réponds UNIQUEMENT par un objet JSON, sans rien autour ni ``` :
 			{"nom":"nom du village","culture":"…"}
@@ -209,8 +204,9 @@ public final class Cerveau {
 	public static CompletableFuture<Persona> incarner(final String demande) {
 		HameauConfig config = HameauConfig.get();
 		AnthropicClient c = client;
+		String consignes = Textes.naissance + Textes.decor() + NAISSANCE;
 		return CompletableFuture.supplyAsync(() -> {
-			Message reponse = appeler(c, config, NAISSANCE, demande);
+			Message reponse = appeler(c, config, consignes, demande);
 			JsonObject json = extraire(texte(reponse));
 			java.util.List<String> traits = new java.util.ArrayList<>();
 			if (json.has("traits") && json.get("traits").isJsonArray()) {
@@ -232,8 +228,9 @@ public final class Cerveau {
 	public static CompletableFuture<Fondation> fonder(final String demande) {
 		HameauConfig config = HameauConfig.get();
 		AnthropicClient c = client;
+		String consignes = Textes.village + Textes.decor() + FONDATION;
 		return CompletableFuture.supplyAsync(() -> {
-			Message reponse = appeler(c, config, FONDATION, demande);
+			Message reponse = appeler(c, config, consignes, demande);
 			JsonObject json = extraire(texte(reponse));
 			return new Fondation(chaine(json, "nom"), chaine(json, "culture"), reponse.usage().inputTokens(), reponse.usage().outputTokens());
 		}, FILS);
